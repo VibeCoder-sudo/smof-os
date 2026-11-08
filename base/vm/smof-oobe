@@ -3,7 +3,11 @@
 # stdin, five lines: display name, user name, 4 digit PIN, theme (light or dark), keyboard "layouts|variants|switch" (last line may be missing)
 S=/var/lib/smof
 [ -f "$S/oobe-state" ] || { echo "not allowed" >&2; exit 1; }
+LOG=$S/oobe.log
+exec 2>>"$LOG"
 read -r NAME; read -r USERN; read -r PIN; read -r THEME; read -r KBD
+echo "== $(date) setup for user $USERN" >&2
+fail() { echo "FAILED at $1, code $2" >&2; exit "$2"; }
 case "$USERN" in ([a-z]*) ;; (*) echo "bad user" >&2; exit 2;; esac
 case "$USERN" in (*[!a-z0-9]*) echo "bad user" >&2; exit 2;; esac
 [ "${#USERN}" -le 24 ] || { echo "bad user" >&2; exit 2; }
@@ -13,8 +17,15 @@ case "$THEME" in (light|dark) ;; (*) echo "bad theme" >&2; exit 4;; esac
 case "$NAME" in (*[\"\\]*) echo "bad name" >&2; exit 5;; esac
 [ -n "$NAME" ] && [ "${#NAME}" -le 40 ] || { echo "bad name" >&2; exit 5; }
 
-id "$USERN" >/dev/null 2>&1 || useradd -m -G wheel,video,input,seat,audio,render -s /bin/bash "$USERN" || exit 6
-echo "$USERN:$PIN" | chpasswd || exit 7
+# only the groups this system really has, a missing one must not stop the setup
+GL=""
+for g in wheel video input seat audio render; do getent group "$g" >/dev/null 2>&1 && GL="$GL,$g"; done
+GL=${GL#,}
+if ! id "$USERN" >/dev/null 2>&1; then
+  if [ -n "$GL" ]; then useradd -m -G "$GL" -s /bin/bash "$USERN" || fail useradd 6
+  else useradd -m -s /bin/bash "$USERN" || fail useradd 6; fi
+fi
+echo "$USERN:$PIN" | chpasswd || fail chpasswd 7
 H=$(getent passwd "$USERN" | cut -d: -f6)
 mkdir -p "$H/.config/foot" "$H/.config/fastfetch"
 [ -f "$H/.config/wayfire.ini" ] || cp /usr/share/smof/skel/wayfire.ini "$H/.config/wayfire.ini"
@@ -31,6 +42,7 @@ for d in Desktop Documents Downloads Music Pictures Videos; do mkdir -p "$H/$d";
 printf '{"name":"%s","user":"%s","avatar":""}\n' "$NAME" "$USERN" > "$S/user.json"
 chmod 644 "$S/user.json"
 echo "$THEME" > "$S/theme"; chmod 666 "$S/theme"
+echo "setup finished" >&2
 rm -f "$S/oobe-state"
 sync
 exit 0

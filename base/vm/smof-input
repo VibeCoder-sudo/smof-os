@@ -58,8 +58,13 @@ def get():
 
 def lst():
     sec = ""; names, variants = {}, {}
-    try: lines = open("/usr/share/X11/xkb/rules/base.lst").read().split("\n")
-    except OSError: lines = []
+    lines = []
+    for path in ("/usr/share/X11/xkb/rules/base.lst", "/usr/share/xkeyboard-config-2/rules/base.lst", "/usr/share/X11/xkb/rules/evdev.lst", "/usr/share/xkeyboard-config-2/rules/evdev.lst"):
+        try:
+            lines = open(path).read().split("\n")
+            break
+        except OSError:
+            continue
     for l in lines:
         if l.startswith("! "): sec = l[2:].strip(); continue
         if not l.strip(): continue

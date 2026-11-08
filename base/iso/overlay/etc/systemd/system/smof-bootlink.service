@@ -1,9 +1,0 @@
-[Unit]
-Description=Keep the Smof boot partition and the running system in step
-After=smof-bootlink-once.service
-
-[Service]
-ExecStart=/usr/local/bin/smof-bootlink loop
-
-[Install]
-WantedBy=multi-user.target

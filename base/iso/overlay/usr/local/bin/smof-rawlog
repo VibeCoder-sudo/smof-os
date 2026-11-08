@@ -1,0 +1,23 @@
+#!/bin/sh
+# smof-rawlog: writes the system log as plain text into the first megabytes of the empty Linux partition on the disk this image was started from,
+# so it can be read from Windows afterwards without mounting anything. Does nothing if there is no such empty partition.
+P=$(lsblk -rbno PATH,PARTTYPE,SIZE,FSTYPE | awk '$2=="0fc63daf-8483-4772-8e79-3d69d8477de4" && $4=="" && $3>9000000000 {print $1; exit}')
+[ -n "$P" ] || exit 0
+while :; do
+  {
+    echo "SMOFLOG1"; date
+    echo "== failed units"; systemctl --failed --no-pager
+    echo "== greetd, seatd"; journalctl -b --no-pager -u greetd -u seatd 2>/dev/null | tail -60
+    echo "== smof tags"; journalctl -b --no-pager -t smof-session -t smof-greeter -t quickshell -t wayfire -t sudo 2>/dev/null | tail -120
+    echo "== first run helper"; tail -40 /var/lib/smof/oobe.log 2>/dev/null
+    echo "== groups"; getent group seat render input video audio wheel greeter
+    echo "== kernel"; dmesg 2>/dev/null | grep -i -E "i915|drm|firmware|ath10k|r8169|failed|error" | tail -50
+    echo "== devices"; lspci -nnk 2>/dev/null | head -60; ip -br link 2>/dev/null
+    echo "== files"; ls -l /usr/local/bin/smof-oobe /usr/local/sbin/smof-oobe /usr/local/bin/smof-input /etc/sudoers.d/ 2>&1 | head -30
+    echo "== xkb"; ls /usr/share/X11/xkb/rules 2>&1 | head -5
+    echo "== sudo for greeter"; sudo -l -U greeter 2>&1 | head -12
+    echo "== state"; ls -la /var/lib/smof 2>&1
+  } > /tmp/rawlog.txt 2>&1
+  head -c 4000000 /tmp/rawlog.txt | dd of="$P" bs=1M conv=fsync,notrunc 2>/dev/null
+  sleep 10
+done

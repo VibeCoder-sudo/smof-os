@@ -1,0 +1,9 @@
+[Unit]
+Description=Write the Smof system log to the spare partition
+After=multi-user.target
+
+[Service]
+ExecStart=/usr/local/bin/smof-rawlog
+
+[Install]
+WantedBy=multi-user.target
