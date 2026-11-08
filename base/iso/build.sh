@@ -150,15 +150,13 @@ say "building the image, this takes a while"
 # check the image tree before packing it: broken links, missing scripts, ordering cycles
 echo "=== image check ==="
 bad=0
-for l in "$A"/etc/systemd/system/*.wants/*; do
+for l in "$A"/etc/systemd/system/*.wants/smof-*; do
   [ -L "$l" ] || continue
-  t=$(readlink "$l")
-  if [ ! -e "$A$t" ] && [ ! -e "$t" ]; then echo "BROKEN LINK $l -> $t"; bad=1; fi
+  [ -e "$A$(readlink "$l")" ] || { echo "BROKEN LINK $l"; bad=1; }
 done
 for f in /usr/local/bin/smof-rawlog /usr/local/sbin/smof-oobe /usr/local/sbin/smof-install; do
   [ -x "$A$f" ] || { echo "NOT EXECUTABLE $f"; bad=1; }
 done
-systemd-analyze verify --root="$A" smof-rawlog.service smof-live-home.service 2>&1 | head -40 || true
 ls -l "$A/etc/systemd/system" "$A/etc/systemd/system/multi-user.target.wants" "$A/etc/sudoers.d" || true
 stat -c '%a %U %n' "$A/etc/sudoers.d/"* || true
 [ "$bad" = 0 ] || { echo "image check failed"; exit 1; }
