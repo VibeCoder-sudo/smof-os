@@ -1,0 +1,43 @@
+# smof-shell : the Smof desktop (QML apps, lock screen, tools, icons, sounds). Architecture independent, so a change goes out in seconds.
+# Build from a checkout of the Smof tree: SMOF_BASE=/path/to/base SMOF_PKGVER=20261108.1 makepkg -f
+pkgname=smof-shell
+pkgver=${SMOF_PKGVER:-0.1}
+pkgrel=1
+pkgdesc='Smof desktop shell, apps and tools'
+arch=(any)
+url='https://github.com/VibeCoder-sudo/smof-os'
+license=(custom)
+depends=(wayfire quickshell foot greetd seatd networkmanager python python-numpy python-sentencepiece rsync wl-clipboard cliphist wtype grim slurp)
+optdepends=('bluez-utils: Bluetooth' 'wlsunset: Night Light' 'wf-recorder: screen recording' 'ncnn: Smof upscaler')
+backup=()
+options=(!strip)
+
+package() {
+  local B=${SMOF_BASE:?set SMOF_BASE to the base folder}
+  local S="$pkgdir/usr/share/smof"
+  install -d "$S" "$pkgdir/usr/local/bin" "$pkgdir/usr/local/sbin" "$pkgdir/usr/local/lib/smof" "$pkgdir/usr/share/fonts/smof" "$pkgdir/etc/fonts/conf.d"
+  # every app gets its own copy of the shared QML, quickshell cannot import from outside the config folder
+  local T; T=$(mktemp -d); cp -r "$B/shell/greeter" "$B/shell/apps" "$T/"
+  for d in "$T/greeter" "$T"/apps/*; do [ -d "$d" ] && cp "$B"/shell/shared/*.qml "$d/"; done
+  cp -r "$T/greeter" "$S/greeter"; cp -r "$T/apps" "$S/apps"; rm -rf "$T"
+  cp -r "$B/assets/icons" "$S/icons"
+  install -d "$S/sounds" "$S/skel"
+  cp "$B"/assets/sounds/*.wav "$S/sounds/"
+  cp "$B"/assets/*.webp "$B"/assets/*.jpg "$B/assets/GoogleSansFlex.woff2" "$S/" 2>/dev/null || true
+  install -m 644 "$B/assets/GoogleSansFlex.ttf" "$pkgdir/usr/share/fonts/smof/GoogleSansFlex.ttf"
+  install -m 644 "$B/vm/fonts-smof.conf" "$pkgdir/etc/fonts/conf.d/60-smof.conf"
+  for s in smof-activity smof-askpass smof-bgapps smof-brew smof-cleanup smof-desktop smof-devwatch smof-display smof-downloads smof-fileops smof-files \
+           smof-front smof-health smof-input smof-ipc smof-menubridge smof-pkg smof-session smof-settings smof-shell smof-shot smof-sound smof-store \
+           smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme smof-wifi smof-bt smof-night smof-spotlight smof-snap smof-record; do
+    install -m 755 "$B/vm/$s" "$pkgdir/usr/local/bin/$s"
+  done
+  for s in smof-oobe smof-splash smof-install; do install -m 755 "$B/vm/$s" "$pkgdir/usr/local/sbin/$s"; done
+  install -m 644 "$B/vm/spot/smof_embed.py" "$pkgdir/usr/local/lib/smof/smof_embed.py"
+  # the default config of a new user, without any screen section
+  python3 - "$B/vm/wayfire.ini" "$S/skel/wayfire.ini" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read()
+t = re.sub(r"\[output:[^\]]*\][^\[]*", "", t)
+open(sys.argv[2], "w").write(t)
+PY
+}

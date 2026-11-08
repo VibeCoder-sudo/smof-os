@@ -1,0 +1,42 @@
+name: build-smof-repo
+# the Smof desktop as a pacman package, published as the release "repo": installed systems update with pacman -Syu
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "base/shell/**"
+      - "base/vm/**"
+      - "base/assets/**"
+      - "base/pkg/**"
+permissions:
+  contents: write
+jobs:
+  repo:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: tools
+        run: pacman -Syu --noconfirm base-devel git github-cli
+      - uses: actions/checkout@v4
+      - name: build the package
+        run: |
+          git config --global --add safe.directory "$PWD"
+          useradd -m builder
+          chown -R builder "$PWD"
+          mkdir -p "$PWD/repo-out"; chown builder "$PWD/repo-out"
+          su builder -c "cd '$PWD' && SMOF_BASE='$PWD/base' bash base/pkg/make-repo.sh '$PWD/repo-out'"
+          ls -la repo-out
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$PWD"
+          gh release view repo >/dev/null 2>&1 || gh release create repo --prerelease --title "Smof package repository" --notes "pacman repository of Smof, updated by the build-smof-repo workflow" 
+          gh release upload repo repo-out/* --clobber
+          # forget packages that are no longer in the database
+          keep=$(ls repo-out)
+          for a in $(gh release view repo --json assets --jq '.assets[].name'); do
+            echo "$keep" | grep -qx "$a" || gh release delete-asset repo "$a" -y
+          done

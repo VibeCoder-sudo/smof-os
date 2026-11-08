@@ -68,6 +68,15 @@ for s in smof-oobe smof-splash smof-install; do install -m 755 "$BASE/vm/$s" "$S
 cp -r "$HERE/overlay/." "$STAGE/"
 chmod 755 "$STAGE/usr/local/bin/"* "$STAGE/usr/local/sbin/"*
 chmod 440 "$STAGE/etc/sudoers.d/smof"
+# the Smof package repository: updates of the desktop come with a plain pacman -Syu
+say "package repository"
+cp /etc/pacman.conf "$STAGE/etc/pacman.conf"
+cat >> "$STAGE/etc/pacman.conf" <<'PAC'
+
+[smof]
+SigLevel = Optional TrustAll
+Server = https://github.com/VibeCoder-sudo/smof-os/releases/download/repo
+PAC
 # the default config of a new user: the VM one without any screen section, smof-output-init adds the right one for the real screen
 python3 - "$BASE/vm/wayfire.ini" "$STAGE/usr/share/smof/skel/wayfire.ini" <<'PY'
 import re, sys
