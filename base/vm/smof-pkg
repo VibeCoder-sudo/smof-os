@@ -1,0 +1,408 @@
+#!/usr/bin/python3 -I
+# smof-pkg: the helper behind Smof Store. One tool for three sources, all JSON.
+#   status                         what is available and how much room is left
+#   catalog pacman|brew            every package of that source, compact
+#   top pacman|brew                names of the most used packages
+#   state                          installed and outdated packages of pacman and brew, and what the store installed itself
+#   aur-search WORDS               AUR search through the AUR web service
+#   aur-arch NAME                  which CPU types an AUR package says it builds for
+#   run SOURCE ACTION [NAME]       install, uninstall, update; prints {"line": ...} lines and {"done": true, "ok": ...}
+#   start SOURCE ACTION [NAME]     the same, but as a background job that lives on when the store is closed; prints {"id": ...}
+#   jobs                           all jobs with their stage and last line
+#   log ID                         the last lines of a job
+#   kill ID                        stop a job, also the pacman or brew it started
+#   dismiss ID                     forget a finished job
+import fcntl, signal, time, sys, os, re, json, shutil, subprocess, tarfile, urllib.request, urllib.parse
+
+HOME = os.path.expanduser("~")
+CACHE = os.path.join(HOME, ".cache/smof-store")
+STATE = os.path.join(HOME, ".local/state/smof-store")
+BREW = "/home/linuxbrew/.linuxbrew/bin/brew"
+BAPI = os.path.join(HOME, ".cache/Homebrew/api/internal")
+SYNC = "/var/lib/pacman/sync"
+ENV = dict(os.environ, HOMEBREW_NO_ANALYTICS="1", HOMEBREW_NO_AUTO_UPDATE="1", HOMEBREW_NO_ENV_HINTS="1", HOMEBREW_NO_INSTALL_CLEANUP="1", HOMEBREW_COLOR="0", LANG="C.UTF-8")
+os.makedirs(CACHE, exist_ok=True); os.makedirs(STATE, exist_ok=True)
+
+JOB = None
+def out(o):
+    if JOB is not None: return job_out(o)
+    print(json.dumps(o)); sys.stdout.flush()
+def clean(s): return re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", s).replace("\ufe0e", "").replace("\ufe0f", "").strip()
+def sh(args, **kw): return subprocess.run(args, capture_output=True, text=True, env=ENV, cwd=HOME, **kw)
+def emit(text):
+    try: sys.stdout.write(text); sys.stdout.flush()
+    except BrokenPipeError: pass
+
+# ------------------------------------------------------------------ catalogs
+def pacman_catalog():
+    c = os.path.join(CACHE, "pacman.json")
+    dbs = [os.path.join(SYNC, r + ".db") for r in ("core", "extra", "alarm", "aur") if os.path.exists(os.path.join(SYNC, r + ".db"))]
+    stamp = max((os.path.getmtime(d) for d in dbs), default=0)
+    if os.path.exists(c) and os.path.getmtime(c) >= stamp: emit(open(c).read()); return
+    res = {}
+    for db in dbs:
+        repo = os.path.basename(db)[:-3]
+        try: tf = tarfile.open(db)
+        except Exception: continue
+        for m in tf.getmembers():
+            if not m.name.endswith("/desc"): continue
+            sec = {}; key = None
+            for line in tf.extractfile(m).read().decode("utf-8", "replace").splitlines():
+                if line.startswith("%") and line.endswith("%"): key = line.strip("%"); sec[key] = []
+                elif line and key: sec[key].append(line)
+            n = (sec.get("NAME") or [""])[0]
+            if not n or n in res: continue
+            dp = [re.split(r"[<>=:]", d)[0] for d in sec.get("DEPENDS", [])]
+            res[n] = {"s": "pacman", "n": n, "d": " ".join(sec.get("DESC", [])), "v": (sec.get("VERSION") or [""])[0], "h": (sec.get("URL") or [""])[0],
+                      "l": ", ".join(sec.get("LICENSE", [])), "sz": int((sec.get("ISIZE") or ["0"])[0]), "dl": int((sec.get("CSIZE") or ["0"])[0]), "r": repo,
+                      "dp": dp[:30], "g": sec.get("GROUPS", []), "e": [], "c": ""}
+    s = json.dumps(list(res.values()), separators=(",", ":"))
+    open(c, "w").write(s); emit(s)
+
+def brew_payload_path():
+    if os.path.isdir(BAPI):
+        for f in os.listdir(BAPI):
+            if f.startswith("packages.") and f.endswith(".jws.json.payload"): return os.path.join(BAPI, f)
+    return None
+
+def dep_names(lst):
+    r = []
+    for d in lst or []:
+        if isinstance(d, str): r.append(d)
+        elif isinstance(d, dict):
+            for k, v in d.items():
+                if ":build" not in str(v) and ":test" not in str(v): r.append(k)
+    return r
+
+def brew_catalog():
+    if not os.path.exists(BREW): emit("[]"); return
+    c = os.path.join(CACHE, "brew.json"); p = brew_payload_path()
+    if p is None or time.time() - os.path.getmtime(p) > 86400:
+        sh([BREW, "update", "--quiet"]); p = brew_payload_path()
+    if p is None: emit("[]"); return
+    if os.path.exists(c) and os.path.getmtime(c) >= os.path.getmtime(p): emit(open(c).read()); return
+    d = json.loads(open(p).read().split("\n", 1)[1])
+    res = []
+    for name, f in d["formulae"].items():
+        if "bottle_checksum" not in f or "disable_args" in f: continue
+        res.append({"s": "brew", "n": name, "d": f.get("desc") or "", "v": f.get("stable_version") or "", "h": f.get("homepage") or "", "l": f.get("license") if isinstance(f.get("license"), str) else "",
+                    "e": (f.get("executables") or [])[:6], "dp": dep_names(f.get("stable_dependencies"))[:30], "c": f.get("caveats") or "", "sz": 0, "dl": 0, "g": []})
+    s = json.dumps(res, separators=(",", ":")); open(c, "w").write(s); emit(s)
+
+def top(src):
+    c = os.path.join(CACHE, "top-%s.json" % src)
+    if os.path.exists(c) and time.time() - os.path.getmtime(c) < 86400: emit(open(c).read()); return
+    try:
+        if src == "brew":
+            data = json.load(urllib.request.urlopen("https://formulae.brew.sh/api/analytics/install-on-request/30d.json", timeout=20))
+            names = [i["formula"] for i in data["items"]][:250]
+        else:
+            data = json.load(urllib.request.urlopen("https://pkgstats.archlinux.de/api/packages?limit=400", timeout=20))
+            names = [i["name"] for i in data.get("packagePopularities", [])]
+        s = json.dumps(names); open(c, "w").write(s); emit(s)
+    except Exception:
+        emit(open(c).read() if os.path.exists(c) else "[]")
+
+# ------------------------------------------------------------------ state
+def own():
+    try: return json.load(open(os.path.join(STATE, "own.json")))
+    except Exception: return []
+def own_save(l): json.dump(sorted(set(l)), open(os.path.join(STATE, "own.json"), "w"))
+
+def state():
+    pac = {}
+    for line in sh(["pacman", "-Q"]).stdout.splitlines():
+        p = line.split()
+        if len(p) >= 2: pac[p[0]] = p[1]
+    explicit = [l for l in sh(["pacman", "-Qeq"]).stdout.split() if l]
+    pod = {}
+    for line in sh(["pacman", "-Qu"]).stdout.splitlines():
+        m = re.match(r"(\S+) (\S+) -> (\S+)", line)
+        if m: pod[m.group(1)] = {"from": m.group(2), "to": m.group(3)}
+    b = {"leaves": [], "all": {}, "outdated": {}}
+    if os.path.exists(BREW):
+        b["leaves"] = [l for l in sh([BREW, "leaves", "--installed-on-request"]).stdout.split() if l]
+        for line in sh([BREW, "list", "--formula", "--versions"]).stdout.splitlines():
+            p = line.split()
+            if p: b["all"][p[0]] = p[-1]
+        r = sh([BREW, "outdated", "--formula", "--json=v2"])
+        try:
+            for f in json.loads(r.stdout).get("formulae", []): b["outdated"][f["name"]] = {"from": (f.get("installed_versions") or [""])[-1], "to": f.get("current_version") or ""}
+        except Exception: pass
+    du = shutil.disk_usage("/")
+    out({"pacman": {"all": pac, "explicit": explicit, "outdated": pod}, "brew": b, "own": own(), "free": du.free, "brewok": os.path.exists(BREW)})
+
+def status():
+    ok = os.path.exists(BREW)
+    out({"brew": ok, "brewowner": (lambda s: __import__("pwd").getpwuid(s.st_uid).pw_name)(os.stat("/home/linuxbrew/.linuxbrew")) if ok else "",
+         "brewwritable": ok and os.access("/home/linuxbrew/.linuxbrew", os.W_OK), "free": shutil.disk_usage("/").free, "user": os.environ.get("USER", "")})
+
+# ------------------------------------------------------------------ AUR
+def aur_search(words):
+    try:
+        url = "https://aur.archlinux.org/rpc/v5/search/" + urllib.parse.quote(words) + "?by=name-desc"
+        d = json.load(urllib.request.urlopen(url, timeout=15))
+    except Exception:
+        out({"error": "Could not reach the AUR", "results": []}); return
+    res = []
+    for r in sorted(d.get("results", []), key=lambda r: (-(r.get("Popularity") or 0), -(r.get("NumVotes") or 0)))[:40]:
+        res.append({"s": "aur", "n": r["Name"], "d": r.get("Description") or "", "v": r.get("Version") or "", "h": r.get("URL") or "", "l": ", ".join(r.get("License") or []),
+                    "votes": r.get("NumVotes") or 0, "pop": round(r.get("Popularity") or 0, 2), "ood": bool(r.get("OutOfDate")), "m": r.get("Maintainer") or "", "dp": [], "e": [], "c": "", "g": [], "sz": 0, "dl": 0})
+    out({"error": "", "results": res})
+
+def srcinfo(name):
+    try:
+        raw = urllib.request.urlopen("https://aur.archlinux.org/cgit/aur.git/plain/.SRCINFO?h=" + urllib.parse.quote(name), timeout=15).read().decode("utf-8", "replace")
+    except Exception: return None
+    arch = []; deps = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.startswith("arch ="): arch.append(line.split("=", 1)[1].strip())
+        elif line.startswith(("depends =", "makedepends =")): deps.append(re.split(r"[<>=:]", line.split("=", 1)[1].strip())[0])
+    return {"arch": sorted(set(arch)), "deps": sorted(set(deps))[:40]}
+
+def aur_arch(name):
+    i = srcinfo(name)
+    if i is None: out({"ok": False}); return
+    ok = any(a in ("any", "aarch64", "armv8") for a in i["arch"])
+    out({"ok": True, "arch": i["arch"], "fits": ok, "deps": i["deps"]})
+
+# ------------------------------------------------------------------ running
+def pacman_busy():
+    # a lock file is not enough, it can be left over: busy only when a pacman really runs
+    if not os.path.exists("/var/lib/pacman/db.lck"): return False
+    r = subprocess.run(["pgrep", "-x", "pacman"], capture_output=True)
+    return r.returncode == 0
+
+def wait_lock(limit=1800):
+    t = 0
+    while pacman_busy() and t < limit:
+        if t % 5 == 0: out({"line": "Waiting for another installation to finish..."})
+        time.sleep(1); t += 1
+    if os.path.exists("/var/lib/pacman/db.lck") and not pacman_busy():
+        stream(["sudo", "rm", "-f", "/var/lib/pacman/db.lck"])   # left over from a crash
+    return not pacman_busy()
+
+def stream(cmd, cwd=None, env=None):
+    if "pacman" in cmd and not wait_lock():
+        out({"line": "Error: the package database stayed locked"}); return 1
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env or ENV, cwd=cwd or HOME)
+    buf = b""
+    while True:
+        ch = p.stdout.read(1)
+        if not ch: break
+        if ch in (b"\n", b"\r"):
+            line = clean(buf.decode("utf-8", "replace")); buf = b""
+            if line: out({"line": line})
+        else: buf += ch
+    if buf:
+        line = clean(buf.decode("utf-8", "replace"))
+        if line: out({"line": line})
+    p.wait(); return p.returncode
+
+def fail(msg): out({"line": "Error: " + msg}); out({"done": True, "ok": False})
+
+def run(src, action, name):
+    if src == "brew":
+        args = {"install": ["install", "--force-bottle"], "uninstall": ["uninstall"], "update": ["upgrade", "--force-bottle"]}.get(action)
+        if args is None: return fail("unknown action")
+        rc = stream([BREW] + args + ([name] if name else []))
+        out({"done": True, "ok": rc == 0}); return
+    free = shutil.disk_usage("/").free
+    if src == "pacman":
+        if action == "update":
+            rc = stream(["sudo", "pacman", "-Syu", "--noconfirm"]); out({"done": True, "ok": rc == 0}); return
+        if action == "refresh":
+            rc = stream(["sudo", "pacman", "-Sy"]); out({"done": True, "ok": rc == 0}); return
+        if action == "install":
+            if sh(["pacman", "-Qu"]).stdout.strip(): return fail("The system has updates waiting. Update it first, then install.")
+            info = sh(["pacman", "-Si", name]).stdout
+            m = re.search(r"Installed Size\s*:\s*([\d.]+)\s*(\w+)", info)
+            if m:
+                sz = float(m.group(1)) * {"B": 1, "KiB": 1024, "MiB": 1048576, "GiB": 1073741824}.get(m.group(2), 1)
+                if sz > free - 300 * 1048576: return fail("Not enough room on the disk for this")
+            rc = stream(["sudo", "pacman", "-S", "--needed", "--noconfirm", name])
+            if rc == 0: own_save(own() + [name])
+            out({"done": True, "ok": rc == 0}); return
+        if action == "uninstall":
+            if name not in own(): return fail("This package belongs to the system, the store does not remove it")
+            rc = stream(["sudo", "pacman", "-R", "--noconfirm", name])
+            if rc == 0: own_save([n for n in own() if n != name])
+            out({"done": True, "ok": rc == 0}); return
+    if src == "aur":
+        if action == "uninstall":
+            if name not in own(): return fail("This package belongs to the system, the store does not remove it")
+            rc = stream(["sudo", "pacman", "-R", "--noconfirm", name])
+            if rc == 0: own_save([n for n in own() if n != name])
+            out({"done": True, "ok": rc == 0}); return
+        if action != "install": return fail("unknown action")
+        if sh(["pacman", "-Qu"]).stdout.strip(): return fail("The system has updates waiting. Update it first, then install.")
+        i = srcinfo(name)
+        if i is None: return fail("Could not read the package recipe from the AUR")
+        if not any(a in ("any", "aarch64", "armv8") for a in i["arch"]): return fail("This package is only built for " + ", ".join(i["arch"]) + ", not for this ARM computer")
+        if free < 2500 * 1048576: return fail("Not enough room on the disk to build this, it needs about 2.5 GB free for the build")
+        if not os.path.exists("/usr/bin/fakeroot"):
+            out({"line": "Installing the build tools first"})
+            if stream(["sudo", "pacman", "-S", "--needed", "--noconfirm", "base-devel", "git"]) != 0: return fail("Could not install the build tools")
+        d = os.path.join(CACHE, "aur"); os.makedirs(d, exist_ok=True)
+        wd = os.path.join(d, name); shutil.rmtree(wd, ignore_errors=True)
+        out({"line": "Fetching the recipe"})
+        if stream(["git", "clone", "--depth", "1", "https://aur.archlinux.org/%s.git" % name, wd]) != 0: return fail("Could not download the recipe")
+        out({"line": "Building, this can take a while"})
+        env = dict(ENV, MAKEFLAGS="-j2", PKGEXT=".pkg.tar.zst")
+        rc = stream(["makepkg", "-si", "--noconfirm", "--needed"], cwd=wd, env=env)
+        shutil.rmtree(wd, ignore_errors=True)
+        if rc == 0: own_save(own() + [name])
+        out({"done": True, "ok": rc == 0}); return
+    fail("unknown source")
+
+# ------------------------------------------------------------------ background jobs
+JOBS = os.path.join(STATE, "jobs")
+os.makedirs(JOBS, exist_ok=True)
+def jpath(i, ext="json"): return os.path.join(JOBS, re.sub(r"[^0-9a-z-]", "", i) + "." + ext)
+def jload(i):
+    try: return json.load(open(jpath(i)))
+    except Exception: return None
+def jsave(j):
+    t = jpath(j["id"]) + ".tmp"
+    json.dump(j, open(t, "w")); os.replace(t, jpath(j["id"]))
+def alive(pid):
+    try: os.kill(pid, 0); return True
+    except OSError: return False
+
+ACT = "/usr/local/bin/smof-activity"
+_act_t = [0.0]
+def act_name(j):
+    n = j["n"].capitalize() if j["n"] else ("the system" if j["src"] == "pacman" else "everything")
+    return ("Installing " if j["action"] == "install" else ("Removing " if j["action"] == "uninstall" else "Updating ")) + n
+
+def act_progress(j, line):
+    prog = j.get("prog", -1)
+    m = re.search(r"\((\d+)/(\d+)\)", line); pc = re.search(r"(\d{1,3})%\s*$", line)
+    if m: prog = max(prog, min(99, 50 + 50 * (int(m.group(1)) - 1) / max(1, int(m.group(2)))))
+    elif pc: prog = max(prog, min(45, 5 + 0.4 * int(pc.group(1))))
+    j["prog"] = prog
+    stage = j.get("stage", "Working")
+    low = line.lower()
+    if m or pc or "download" in low or "retriev" in low:
+        stage = "Downloading" if (pc and not m) or "retriev" in low or "download" in low else ("Installing" if "install" in low else ("Updating" if "upgrad" in low else ("Removing" if "remov" in low else stage)))
+    elif "waiting" in low: stage = "Waiting"
+    elif "building" in low or "compil" in low: stage = "Building"
+    j["stage"] = stage
+    return prog, stage
+
+def act_send(j, final=None):
+    now = time.time()
+    if final is None and now - _act_t[0] < 0.5: return
+    _act_t[0] = now
+    try:
+        if final is not None:
+            subprocess.run([ACT, "end", "pkg-" + j["id"], "--note", final], timeout=3); return
+        prog, stage = act_progress(j, j.get("line", ""))
+        try: tail = "\n".join(open(jpath(j["id"], "log")).read().splitlines()[-8:])
+        except OSError: tail = ""
+        cmd = [ACT, "set", "pkg-" + j["id"], "--title", act_name(j), "--sub", stage + ((" " + str(int(prog)) + "%") if prog >= 0 else ""), "--icon", "system-software-install",
+               "--pid", str(os.getpid()), "--log", tail, "--action", "Stop=/usr/local/bin/smof-pkg kill " + j["id"], "--action", "Details=/usr/local/bin/smof-store log"]
+        if prog >= 0: cmd += ["--progress", str(prog)]
+        subprocess.run(cmd, timeout=3)
+    except Exception: pass
+
+def job_out(o):
+    j = JOB
+    if "line" in o:
+        with open(jpath(j["id"], "log"), "a") as f: f.write(o["line"] + "\n")
+        j["line"] = o["line"]; j["t"] = time.time()
+        cur = jload(j["id"])
+        if cur and cur.get("status") == "cancelled": return
+        jsave(j)
+        act_send(j)
+    elif o.get("done"):
+        cur = jload(j["id"])
+        if cur and cur.get("status") == "cancelled": return
+        j["status"] = "done" if o.get("ok") else "failed"; j["t"] = time.time(); jsave(j)
+        act_send(j, ("Installed" if j["action"] == "install" else "Done") if o.get("ok") else "Failed")
+
+def start(src, action, name):
+    i = "%d-%04d" % (int(time.time()), os.getpid() % 10000)
+    j = {"id": i, "src": src, "action": action, "n": name, "status": "queued", "line": "", "t": time.time(), "began": time.time(), "pid": 0}
+    jsave(j)
+    p = subprocess.Popen([os.path.abspath(sys.argv[0]), "job", i], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=os.environ)
+    j["pid"] = p.pid; jsave(j)
+    print(json.dumps({"id": i})); sys.stdout.flush()
+
+def job_main(i):
+    global JOB
+    j = jload(i)
+    if not j: return
+    j["pid"] = os.getpid(); JOB = j; jsave(j)
+    fam = "brew" if j["src"] == "brew" else "pacman"
+    lock = open(os.path.join(STATE, fam + ".lock"), "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        out({"line": "Waiting for the other installations to finish"})
+        fcntl.flock(lock, fcntl.LOCK_EX)
+    cur = jload(i)
+    if cur and cur.get("status") == "cancelled": return
+    j["status"] = "running"; j["began"] = time.time(); jsave(j)
+    try: run(j["src"], j["action"], j["n"])
+    except Exception as e: out({"line": "Error: " + str(e)}); out({"done": True, "ok": False})
+
+def jobs():
+    res = []
+    for f in sorted(os.listdir(JOBS)):
+        if not f.endswith(".json"): continue
+        j = jload(f[:-5])
+        if not j: continue
+        if j["status"] in ("queued", "running") and j.get("pid") and not alive(j["pid"]):
+            j["status"] = "failed"; j["line"] = j.get("line") or "Stopped"; jsave(j)
+        if j["status"] not in ("queued", "running") and time.time() - j["t"] > 86400:
+            for e in ("json", "log"):
+                try: os.remove(jpath(j["id"], e))
+                except OSError: pass
+            continue
+        res.append(j)
+    print(json.dumps(res)); sys.stdout.flush()
+
+def job_log(i):
+    try: lines = open(jpath(i, "log")).read().splitlines()[-300:]
+    except OSError: lines = []
+    print(json.dumps(lines)); sys.stdout.flush()
+
+def job_kill(i):
+    j = jload(i)
+    if not j: return
+    j["status"] = "cancelled"; j["line"] = "Stopped"; j["t"] = time.time(); jsave(j)
+    pid = j.get("pid") or 0
+    if pid:
+        try: os.killpg(os.getpgid(pid), signal.SIGTERM)
+        except OSError: pass
+    if j["src"] != "brew":
+        subprocess.run(["sudo", "pkill", "-TERM", "-x", "pacman"], env=ENV)
+        time.sleep(1.5)
+        if os.path.exists("/var/lib/pacman/db.lck") and not pacman_busy(): subprocess.run(["sudo", "rm", "-f", "/var/lib/pacman/db.lck"], env=ENV)
+    print(json.dumps({"ok": True})); sys.stdout.flush()
+
+def job_dismiss(i):
+    for e in ("json", "log"):
+        try: os.remove(jpath(i, e))
+        except OSError: pass
+
+def main():
+    a = sys.argv[1:]
+    if not a: return
+    c = a[0]
+    if c == "status": status()
+    elif c == "catalog": (pacman_catalog if a[1] == "pacman" else brew_catalog)()
+    elif c == "top": top(a[1])
+    elif c == "state": state()
+    elif c == "aur-search": aur_search(" ".join(a[1:]))
+    elif c == "aur-arch": aur_arch(a[1])
+    elif c == "run": run(a[1], a[2], a[3] if len(a) > 3 else "")
+    elif c == "start": start(a[1], a[2], a[3] if len(a) > 3 else "")
+    elif c == "job": job_main(a[1])
+    elif c == "jobs": jobs()
+    elif c == "log": job_log(a[1])
+    elif c == "kill": job_kill(a[1])
+    elif c == "dismiss": job_dismiss(a[1])
+main()

@@ -1,0 +1,334 @@
+#!/usr/bin/python3 -I
+# smof-fileops: file operations for the Smof Files app. Prints JSON.
+#   ls DIR [hidden]          list a folder
+#   mkdir DIR NAME           new folder (NAME, NAME 2, ...)
+#   rename PATH NEWNAME
+#   trash PATH...            move to the trash (~/.local/share/Trash)
+#   emptytrash               delete everything in the trash for good
+#   purge PATH...            delete these items of the trash for good
+#   restore PATH...          put these items of the trash back where they came from
+#   copy|move DEST SRC...    paste
+#   open PATH                open a file with the default app
+#   places                   the folders for the side list
+#   touch DIR NAME           new empty text file
+#   zip DIR SRC...           pack into DIR/NAME.zip
+#   props PATH               details of one file or folder
+#   drives                   the disks and partitions
+#   mountdev DEV USER        (root) mount a partition under /run/media/USER/NAME, prints the folder
+#   umountdev DEV            (root) unmount it again
+import sys, os, json, shutil, time, subprocess, stat, urllib.parse
+
+HOME = os.path.expanduser("~")
+TRASH = os.path.join(HOME, ".local/share/Trash")
+
+def out(o): print(json.dumps(o)); sys.stdout.flush()
+
+def unique(dirpath, name):
+    base, ext = os.path.splitext(name)
+    p = os.path.join(dirpath, name); n = 2
+    while os.path.lexists(p):
+        p = os.path.join(dirpath, "%s %d%s" % (base, n, ext)); n += 1
+    return p
+
+def ls(d, hidden):
+    items = []
+    try:
+        with os.scandir(d) as it:
+            for e in it:
+                if not hidden and e.name.startswith("."): continue
+                try:
+                    st = e.stat(follow_symlinks=True)
+                    isdir = stat.S_ISDIR(st.st_mode)
+                except OSError:
+                    try: st = e.stat(follow_symlinks=False); isdir = False
+                    except OSError: continue
+                items.append({"name": e.name, "dir": isdir, "size": 0 if isdir else st.st_size, "mtime": int(st.st_mtime * 1000), "link": e.is_symlink()})
+    except PermissionError:
+        out({"error": "No permission to open this folder", "items": []}); return
+    except OSError as ex:
+        out({"error": ex.strerror or "Cannot open this folder", "items": []}); return
+    items.sort(key=lambda i: (not i["dir"], i["name"].lower()))
+    out({"error": "", "items": items})
+
+def do_trash(paths):
+    n_done = 0
+    os.makedirs(os.path.join(TRASH, "files"), exist_ok=True); os.makedirs(os.path.join(TRASH, "info"), exist_ok=True)
+    for p in paths:
+        if not os.path.lexists(p): continue
+        name = os.path.basename(p.rstrip("/"))
+        dest = unique(os.path.join(TRASH, "files"), name)
+        info = os.path.join(TRASH, "info", os.path.basename(dest) + ".trashinfo")
+        with open(info, "w") as f:
+            f.write("[Trash Info]\nPath=%s\nDeletionDate=%s\n" % (urllib.parse.quote(os.path.abspath(p)), time.strftime("%Y-%m-%dT%H:%M:%S")))
+        shutil.move(p, dest); n_done += 1
+    if n_done: act("set", "files-trash", "--title", "Moved to Trash" if n_done == 1 else "Moved %d items to Trash" % n_done, "--sub", os.path.basename(paths[0].rstrip("/")) if n_done == 1 else "Open the Trash to put them back", "--icon", "/usr/share/icons/Papirus/64x64/places/user-trash.svg", "--size", "tiny", "--ttl", "4", "--action", "Open Trash=/usr/local/bin/smof-files " + os.path.join(TRASH, "files"))
+    out({"ok": True})
+
+def rm_any(p):
+    if os.path.isdir(p) and not os.path.islink(p): shutil.rmtree(p, ignore_errors=True)
+    else:
+        try: os.remove(p)
+        except OSError: pass
+
+def in_trash(p):
+    root = os.path.realpath(os.path.join(TRASH, "files"))
+    return os.path.realpath(p).startswith(root + os.sep)
+
+def purge(paths):
+    n = 0
+    for p in paths:
+        if not in_trash(p): continue
+        rm_any(p); rm_any(os.path.join(TRASH, "info", os.path.basename(p.rstrip("/")) + ".trashinfo")); n += 1
+    out({"ok": True, "count": n})
+
+def empty_trash():
+    n = 0
+    for sub in ("files", "info"):
+        d = os.path.join(TRASH, sub)
+        if not os.path.isdir(d): continue
+        for name in os.listdir(d):
+            rm_any(os.path.join(d, name))
+            if sub == "files": n += 1
+    act("set", "files-empty", "--title", "Trash emptied", "--sub", "%d item%s deleted for good" % (n, "" if n == 1 else "s"), "--icon", "/usr/share/icons/Papirus/64x64/places/user-trash.svg", "--size", "tiny", "--ttl", "4")
+    out({"ok": True, "count": n})
+
+def restore(paths):
+    n = 0; last = ""
+    for p in paths:
+        if not in_trash(p) or not os.path.lexists(p): continue
+        base = os.path.basename(p.rstrip("/")); info = os.path.join(TRASH, "info", base + ".trashinfo")
+        orig = ""
+        try:
+            for l in open(info):
+                if l.startswith("Path="): orig = urllib.parse.unquote(l[5:].strip())
+        except OSError: pass
+        if not orig: orig = os.path.join(os.path.expanduser("~"), base)
+        d = os.path.dirname(orig); os.makedirs(d, exist_ok=True)
+        dest = unique(d, os.path.basename(orig))
+        shutil.move(p, dest); rm_any(info); n += 1; last = dest
+    out({"ok": True, "count": n, "path": last})
+
+ACT = "/usr/local/bin/smof-activity"
+def act(*args):
+    """tell the pill what is going on, only for our own user in a graphical session"""
+    if os.geteuid() == 0 or not os.environ.get("XDG_RUNTIME_DIR"): return
+    try: subprocess.run([ACT] + list(args), timeout=2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception: pass
+
+def tree_bytes(p):
+    if os.path.islink(p) or not os.path.isdir(p):
+        try: return os.lstat(p).st_size
+        except OSError: return 0
+    n = 0
+    for root, dirs, files in os.walk(p):
+        for f in files:
+            try: n += os.lstat(os.path.join(root, f)).st_size
+            except OSError: pass
+    return n
+
+def fmt_bytes(n):
+    for u in ("B", "KB", "MB", "GB"):
+        if n < 1024 or u == "GB": return ("%d %s" % (n, u)) if u == "B" else ("%.1f %s" % (n, u))
+        n /= 1024.0
+
+class Progress:
+    def __init__(self, total, label):
+        self.total = max(1, total); self.done = 0; self.last = 0.0; self.label = label; self.id = "copy-%d" % os.getpid()
+        self.t0 = time.time(); self.shown = False
+    def add(self, n, name=""):
+        self.done += n; now = time.time()
+        if now - self.t0 < 0.8 or now - self.last < 0.35: return          # a copy that is over in under a second never shows
+        self.shown = True
+        self.last = now
+        act("set", self.id, "--title", self.label, "--sub", "%s of %s" % (fmt_bytes(self.done), fmt_bytes(self.total)), "--icon", "system-file-manager",
+            "--progress", "%.1f" % (100.0 * self.done / self.total), "--pid", str(os.getpid()), "--log", name)
+
+def copy_file(src, dst, prog=None):
+    if os.path.islink(src):
+        os.symlink(os.readlink(src), dst); return dst
+    with open(src, "rb") as a, open(dst, "wb") as b:
+        while True:
+            chunk = a.read(1 << 20)
+            if not chunk: break
+            b.write(chunk)
+            if prog: prog.add(len(chunk), os.path.basename(src))
+    shutil.copystat(src, dst, follow_symlinks=False)
+    return dst
+
+def paste(mode, dest, srcs):
+    todo = []
+    for s in srcs:
+        if not os.path.lexists(s): continue
+        name = os.path.basename(s.rstrip("/"))
+        target = os.path.join(dest, name)
+        if os.path.abspath(target) == os.path.abspath(s):
+            if mode == "move": continue
+            target = unique(dest, name)
+        elif os.path.lexists(target):
+            target = unique(dest, name)
+        if os.path.isdir(s) and os.path.abspath(dest).startswith(os.path.abspath(s) + os.sep): continue
+        todo.append((s, target))
+    total = sum(tree_bytes(s) for s, t in todo) if todo else 0
+    big = total >= 30 * 1048576          # small jobs are over before the pill could show them
+    prog = Progress(total, ("Copying " if mode == "copy" else "Moving ") + ("1 item" if len(todo) == 1 else "%d items" % len(todo))) if big else None
+    try:
+        for s, target in todo:
+            if mode == "copy":
+                if os.path.isdir(s) and not os.path.islink(s): shutil.copytree(s, target, symlinks=True, copy_function=lambda a, b: copy_file(a, b, prog))
+                else: copy_file(s, target, prog)
+            else:
+                shutil.move(s, target, copy_function=lambda a, b: copy_file(a, b, prog))
+    finally:
+        if big and prog.shown: act("end", prog.id, "--note", "Copied" if mode == "copy" else "Moved")
+    out({"ok": True})
+
+TEXT = {"txt","md","py","sh","conf","json","log","c","h","cpp","hpp","qml","toml","yml","yaml","ini","cfg","xml","html","css","js","ts","rs","go","service","desktop","csv","tex","lua"}
+
+def open_file(p):
+    ext = os.path.splitext(p)[1].lstrip(".").lower()
+    if ext in TEXT or (subprocess.run(["file", "-b", "--mime-type", p], capture_output=True, text=True).stdout.startswith("text/")):
+        subprocess.Popen(["foot", "-e", os.environ.get("EDITOR", "vim"), p], cwd=os.path.dirname(p) or HOME, start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+        out({"ok": True}); return
+    r = subprocess.run(["gio", "mime", p], capture_output=True, text=True)
+    if "No default" in r.stdout or r.returncode != 0:
+        out({"ok": False, "error": "No app to open this kind of file yet"}); return
+    subprocess.Popen(["xdg-open", p], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    out({"ok": True})
+
+def places():
+    p = [{"name": "Home", "path": HOME, "icon": "home"}]
+    for n in ("Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos"):
+        d = os.path.join(HOME, n)
+        if os.path.isdir(d): p.append({"name": n, "path": d, "icon": "folder"})
+    p.append({"name": "Computer", "path": "/", "icon": "drive"})
+    p.append({"name": "Trash", "path": os.path.join(TRASH, "files"), "icon": "trash"})
+    out(p)
+
+def make_zip(d, srcs):
+    import zipfile
+    name = os.path.basename(srcs[0].rstrip("/")) if len(srcs) == 1 else "Archive"
+    z = unique(d, name + ".zip")
+    with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
+        for sp in srcs:
+            sp = sp.rstrip("/"); base = os.path.dirname(sp)
+            if os.path.isdir(sp):
+                for root, dirs, files in os.walk(sp):
+                    if not dirs and not files: zf.write(root, os.path.relpath(root, base) + "/")
+                    for f in files:
+                        fp = os.path.join(root, f)
+                        if os.path.islink(fp) or not os.path.isfile(fp): continue
+                        zf.write(fp, os.path.relpath(fp, base))
+            elif os.path.isfile(sp): zf.write(sp, os.path.basename(sp))
+    act("set", "files-zip", "--title", "Archive created", "--sub", os.path.basename(z), "--icon", "/usr/share/icons/Papirus/64x64/mimetypes/package-x-generic.svg", "--size", "tiny", "--ttl", "5", "--action", "Show=/usr/local/bin/smof-files " + d)
+    out({"ok": True, "path": z})
+
+def props(p):
+    import pwd, grp
+    st = os.lstat(p)
+    kind = "Folder" if stat.S_ISDIR(st.st_mode) else ("Link" if stat.S_ISLNK(st.st_mode) else "File")
+    mime = ""
+    if kind != "Folder":
+        mime = subprocess.run(["file", "-b", "--mime-type", p], capture_output=True, text=True).stdout.strip()
+    size = st.st_size; count = 0
+    if kind == "Folder":
+        size = 0
+        try:
+            for root, dirs, files in os.walk(p):
+                for f in files:
+                    try: size += os.lstat(os.path.join(root, f)).st_size; count += 1
+                    except OSError: pass
+                if count > 20000: break
+        except OSError: pass
+    try: owner = pwd.getpwuid(st.st_uid).pw_name
+    except KeyError: owner = str(st.st_uid)
+    try: group = grp.getgrgid(st.st_gid).gr_name
+    except KeyError: group = str(st.st_gid)
+    out({"name": os.path.basename(p.rstrip("/")) or "/", "path": p, "kind": kind, "mime": mime, "size": size, "files": count,
+         "mtime": int(st.st_mtime * 1000), "mode": stat.filemode(st.st_mode), "owner": owner, "group": group})
+
+def drives():
+    r = subprocess.run(["lsblk", "-J", "-b", "-o", "NAME,LABEL,SIZE,FSTYPE,MOUNTPOINTS,TYPE,RM,PATH,MODEL,TRAN"], capture_output=True, text=True)
+    try: data = json.loads(r.stdout)["blockdevices"]
+    except Exception: out([]); return
+    res = []
+    def walk(d, parent):
+        kids = d.get("children") or []
+        fs = d.get("fstype")
+        if d.get("type") in ("part", "loop", "disk", "crypt", "lvm") and fs and fs not in ("swap", "LVM2_member", "crypto_LUKS", "linux_raid_member"):
+            mps = [m for m in (d.get("mountpoints") or []) if m]
+            if "/" in mps: pass
+            else:
+                label = d.get("label") or ((parent or {}).get("model") or "").strip() or d["name"]
+                if not d.get("label") and mps and mps[0].startswith("/boot"): label = "Boot"
+                res.append({"dev": d["path"], "name": label, "size": int(d.get("size") or 0), "fs": fs, "mount": mps[0] if mps else "",
+                            "system": bool(mps and (mps[0].startswith("/boot") or mps[0].startswith("/efi"))), "removable": bool(d.get("rm")) or d.get("tran") == "usb"})
+        for c in kids: walk(c, d)
+    for d in data: walk(d, None)
+    out(res)
+
+def mountdev(dev, user):
+    r = subprocess.run(["lsblk", "-no", "LABEL,FSTYPE,MOUNTPOINT", dev], capture_output=True, text=True).stdout.rstrip("\n").split("\n")[0]
+    parts = r.split()
+    if os.path.ismount(r.split()[-1]) if len(parts) >= 1 and r.split()[-1].startswith("/") else False:
+        out({"ok": True, "path": r.split()[-1]}); return
+    info = subprocess.run(["lsblk", "-no", "LABEL", dev], capture_output=True, text=True).stdout.strip() or os.path.basename(dev)
+    fs = subprocess.run(["lsblk", "-no", "FSTYPE", dev], capture_output=True, text=True).stdout.strip()
+    name = info.replace("/", "_")
+    base = os.path.join("/run/media", user)
+    os.makedirs(base, exist_ok=True)
+    os.chmod("/run/media", 0o755)
+    path = os.path.join(base, name)
+    n = 2
+    while os.path.ismount(path) or (os.path.exists(path) and os.listdir(path)): path = os.path.join(base, "%s %d" % (name, n)); n += 1
+    os.makedirs(path, exist_ok=True)
+    opts = []
+    if fs in ("vfat", "exfat", "ntfs", "ntfs3"):
+        import pwd
+        pw = pwd.getpwnam(user); opts = ["-o", "uid=%d,gid=%d" % (pw.pw_uid, pw.pw_gid)]
+    r = subprocess.run(["mount"] + opts + [dev, path], capture_output=True, text=True)
+    if r.returncode != 0:
+        try: os.rmdir(path)
+        except OSError: pass
+        out({"ok": False, "error": (r.stderr.strip().split(":")[-1].strip() or "Could not mount this disk")}); return
+    out({"ok": True, "path": path})
+
+def umountdev(dev):
+    mp = subprocess.run(["lsblk", "-no", "MOUNTPOINT", dev], capture_output=True, text=True).stdout.strip().split("\n")[0]
+    r = subprocess.run(["umount", dev], capture_output=True, text=True)
+    if r.returncode != 0: out({"ok": False, "error": r.stderr.strip().split(":")[-1].strip() or "Could not unmount"}); return
+    if mp.startswith("/run/media/"):
+        try: os.rmdir(mp)
+        except OSError: pass
+    out({"ok": True})
+
+def main():
+    a = sys.argv[1:]
+    if not a: return
+    c = a[0]
+    try:
+        if c == "ls": ls(a[1], len(a) > 2 and a[2] == "hidden")
+        elif c == "mkdir":
+            p = unique(a[1], a[2]); os.makedirs(p); out({"ok": True, "path": p})
+        elif c == "rename":
+            src, new = a[1], a[2]
+            dst = os.path.join(os.path.dirname(src), new)
+            if os.path.lexists(dst) and dst != src: out({"ok": False, "error": "A file with that name already exists"}); return
+            os.rename(src, dst); out({"ok": True, "path": dst})
+        elif c == "trash": do_trash(a[1:])
+        elif c == "emptytrash": empty_trash()
+        elif c == "purge": purge(a[1:])
+        elif c == "restore": restore(a[1:])
+        elif c in ("copy", "move"): paste(c, a[1], a[2:])
+        elif c == "open": open_file(a[1])
+        elif c == "places": places()
+        elif c == "touch":
+            p = unique(a[1], a[2]); open(p, "a").close(); out({"ok": True, "path": p})
+        elif c == "zip": make_zip(a[1], a[2:])
+        elif c == "props": props(a[1])
+        elif c == "drives": drives()
+        elif c == "mountdev": mountdev(a[1], a[2])
+        elif c == "umountdev": umountdev(a[1])
+    except Exception as ex:
+        out({"ok": False, "error": str(ex)})
+main()

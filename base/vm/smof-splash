@@ -1,0 +1,9 @@
+#!/bin/sh
+# smof-splash show|handoff|quit : lets the session bring the boot splash back for the hand over from the lock screen
+case "$1" in
+  show)    pgrep -x plymouthd >/dev/null || /usr/bin/plymouthd --mode=boot --attach-to-session --pid-file=/run/plymouth/pid
+           /usr/bin/plymouth show-splash ;;
+  handoff) /usr/bin/plymouth deactivate ;;
+  quit)    /usr/bin/plymouth quit --retain-splash ;;
+esac
+exit 0

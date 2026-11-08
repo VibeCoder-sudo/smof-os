@@ -1,0 +1,11 @@
+#!/bin/sh
+# smof-upscaler [PICTURE...] : opens Smof Upscaler, or adds pictures to the open one
+cfg=/usr/share/smof/apps/upscaler/shell.qml
+list=""
+for p in "$@"; do list="$list|$p"; done
+if pgrep -u "$(id -u)" -f "quickshell -p $cfg" >/dev/null 2>&1; then
+  [ -n "$list" ] && quickshell ipc -p "$cfg" call upscaler add "$list" >/dev/null 2>&1
+  exit 0
+fi
+export LANG=C.UTF-8
+SMOF_PICS="$list" exec quickshell -p "$cfg" >/dev/null 2>&1

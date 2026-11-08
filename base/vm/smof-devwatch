@@ -1,0 +1,57 @@
+#!/usr/bin/python3 -I
+# smof-devwatch: a sound when a USB drive is plugged in or taken out. One copy per user, started with the session.
+import subprocess, os, sys, json, time, fcntl
+RT = os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+lk = open(os.path.join(RT, "smof-devwatch.lock"), "w")
+try: fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except OSError: sys.exit(0)
+
+def pill(title, sub, icon):
+    try: subprocess.run(["/usr/local/bin/smof-activity", "set", "usb", "--title", title, "--sub", sub, "--icon", icon, "--size", "tiny", "--important", "--ttl", "5"], timeout=3)
+    except Exception: pass
+
+def play(name):
+    try: o = json.load(open("/var/lib/smof/look.json"))
+    except Exception: o = {}
+    if o.get("sounds", True) is False: return
+    vol = int(round(float(o.get("soundVol", 0.8)) * 100))
+    subprocess.Popen(["/usr/local/bin/smof-sound", name, str(vol)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+import threading, glob
+def net_up():
+    for f in glob.glob("/sys/class/net/*/operstate"):
+        if "/lo/" in f: continue
+        try:
+            if open(f).read().strip() == "up": return True
+        except OSError: pass
+    return False
+def net_watch():
+    prev = net_up()
+    while True:
+        time.sleep(3)
+        now = net_up()
+        if now != prev:
+            prev = now
+            try: subprocess.run(["/usr/local/bin/smof-activity", "set", "net", "--title", "Back online" if now else "No network", "--sub", "Connection is up again" if now else "The connection was lost", "--icon", "preferences-system-network", "--size", "tiny", "--important", "--ttl", "5"], timeout=3)
+            except Exception: pass
+threading.Thread(target=net_watch, daemon=True).start()
+
+last = {}
+while True:
+    p = subprocess.Popen(["udevadm", "monitor", "--udev", "--property", "--subsystem-match=block"], stdout=subprocess.PIPE, text=True, bufsize=1)
+    props = {}
+    for line in p.stdout:
+        line = line.rstrip("\n")
+        if line.strip() == "":
+            a, t = props.get("ACTION"), props.get("DEVTYPE")
+            if a in ("add", "remove") and t == "disk" and (props.get("ID_BUS") == "usb" or "/usb" in props.get("DEVPATH", "")):
+                now = time.time(); name = props.get("DEVNAME", "")
+                if now - last.get((a, name), 0) > 1.5:
+                    last[(a, name)] = now
+                    play("usb-in" if a == "add" else "usb-out")
+                    model = (props.get("ID_MODEL") or "USB drive").replace("_", " ")
+                    pill("Drive connected" if a == "add" else "Drive removed", model, "/usr/share/icons/Papirus/64x64/devices/drive-removable-media.svg")
+            props = {}
+        elif "=" in line and not line.startswith("UDEV"):
+            k, _, v = line.partition("="); props[k] = v
+    time.sleep(2)

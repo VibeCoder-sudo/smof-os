@@ -1,0 +1,79 @@
+#!/usr/bin/python3 -I
+# smof-desktop: what the desktop shows. Prints JSON.
+#   list                       the items of ~/Desktop with a label and an icon
+#   launch PATH                run a launcher file (.desktop) from the desktop
+#   mklauncher NAME ICON CMD.. write a launcher file on the desktop, prints its file name
+import sys, os, json, shlex, subprocess, re
+
+HOME = os.path.expanduser("~")
+DESK = os.path.join(HOME, "Desktop")
+IMG = {"png", "jpg", "jpeg", "webp", "gif", "bmp", "svg"}
+MIME = {"pdf": "application-pdf", "zip": "package-x-generic", "gz": "package-x-generic", "xz": "package-x-generic", "tar": "package-x-generic",
+        "mp3": "audio-x-generic", "wav": "audio-x-generic", "flac": "audio-x-generic", "ogg": "audio-x-generic",
+        "mp4": "video-x-generic", "mkv": "video-x-generic", "mov": "video-x-generic", "webm": "video-x-generic",
+        "txt": "text-x-generic", "md": "text-x-generic", "py": "text-x-python", "sh": "text-x-script", "html": "text-html",
+        "doc": "x-office-document", "docx": "x-office-document", "odt": "x-office-document", "xls": "x-office-spreadsheet", "xlsx": "x-office-spreadsheet"}
+
+def out(o): print(json.dumps(o)); sys.stdout.flush()
+
+def read_desktop(p):
+    d = {}
+    try:
+        sec = False
+        for l in open(p, encoding="utf-8", errors="replace"):
+            l = l.strip()
+            if l.startswith("["): sec = l == "[Desktop Entry]"; continue
+            if sec and "=" in l:
+                k, _, v = l.partition("=")
+                if k not in d: d[k] = v
+    except OSError: pass
+    return d
+
+def listing():
+    items = []
+    try: names = sorted(os.listdir(DESK), key=str.lower)
+    except OSError: names = []
+    for n in names:
+        if n.startswith("."): continue
+        p = os.path.join(DESK, n)
+        isdir = os.path.isdir(p)
+        ext = os.path.splitext(n)[1].lstrip(".").lower()
+        it = {"name": n, "path": p, "dir": isdir, "label": n, "icon": "", "kind": "dir" if isdir else "file", "image": False}
+        if not isdir and ext == "desktop":
+            d = read_desktop(p)
+            it["kind"] = "app"; it["label"] = d.get("Name") or n[:-8]; it["icon"] = d.get("Icon", "application-x-executable"); it["exec"] = re.sub(r"%[a-zA-Z%]", "", d.get("Exec", "")).strip()
+        elif not isdir:
+            it["image"] = ext in IMG
+            it["icon"] = MIME.get(ext, "text-x-generic")
+        elif isdir: pass
+        items.append(it)
+    out({"items": items})
+
+def launch(p):
+    d = read_desktop(p)
+    ex = d.get("Exec", "")
+    ex = re.sub(r"%[a-zA-Z%]", "", ex).strip()
+    if not ex: out({"ok": False}); return
+    env = dict(os.environ, QT_ACCESSIBILITY="1", QT_LINUX_ACCESSIBILITY_ALWAYS_ON="1", GTK_A11Y="atspi")
+    try: argv = shlex.split(ex)
+    except ValueError: out({"ok": False}); return
+    if d.get("Terminal", "false") == "true": argv = ["foot", "-e"] + argv
+    subprocess.Popen(argv, cwd=HOME, env=env, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    out({"ok": True})
+
+def mklauncher(name, icon, cmd):
+    os.makedirs(DESK, exist_ok=True)
+    safe = re.sub(r"[/\\\0]", " ", name).strip() or "App"
+    p = os.path.join(DESK, safe + ".desktop"); n = 2
+    while os.path.exists(p):
+        p = os.path.join(DESK, "%s %d.desktop" % (safe, n)); n += 1
+    with open(p, "w", encoding="utf-8") as f:
+        f.write("[Desktop Entry]\nType=Application\nName=%s\nIcon=%s\nExec=%s\nTerminal=false\n" % (name.replace("\n", " "), icon, " ".join(shlex.quote(c) for c in cmd)))
+    os.chmod(p, 0o755)
+    out({"name": os.path.basename(p)})
+
+a = sys.argv[1:]
+if a[:1] == ["list"]: listing()
+elif len(a) == 2 and a[0] == "launch": launch(a[1])
+elif len(a) >= 4 and a[0] == "mklauncher": mklauncher(a[1], a[2], a[3:])
+else: sys.exit("usage: smof-desktop list | launch PATH | mklauncher NAME ICON CMD...")

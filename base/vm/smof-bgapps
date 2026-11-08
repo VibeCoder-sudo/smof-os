@@ -1,0 +1,81 @@
+#!/usr/bin/python3 -I
+# smof-bgapps: apps whose window is gone but whose process lives on, for the dock to show them dimmed.
+#   smof-bgapps list          prints [{pid, app, title}]; call it every few seconds, it remembers what it saw
+#   smof-bgapps quit PID      ask nicely (TERM), the app and its group
+#   smof-bgapps kill PID      force (KILL)
+import socket, json, struct, os, glob, sys, time, signal
+RT = os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+STATE = os.path.join(RT, "smof-bgapps.json")
+SHELL = ("quickshell", "wayfire", "smof-", "xdg-", "dbus", "pipewire", "wireplumber", "polkit", "Xwayland", "at-spi", "gvfs", "ydotool")
+
+def send(s, m):
+    d = json.dumps(m).encode(); s.sendall(struct.pack('<I', len(d)) + d)
+def recv(s):
+    def rd(n):
+        b = b""
+        while len(b) < n:
+            c = s.recv(n - len(b))
+            if not c: raise EOFError
+            b += c
+        return b
+    n = struct.unpack('<I', rd(4))[0]; return json.loads(rd(n))
+def views():
+    p = os.environ.get("WAYFIRE_SOCKET")
+    if not p or not os.path.exists(p):
+        c = glob.glob(os.path.join(RT, "wayfire-*.socket")); p = c[0] if c else None
+    if not p: return None
+    s = socket.socket(socket.AF_UNIX); s.settimeout(2); s.connect(p)
+    send(s, {"method": "window-rules/list-views", "data": {}}); r = recv(s); s.close(); return r
+
+def comm(pid):
+    try: return open("/proc/%d/comm" % pid).read().strip()
+    except OSError: return None
+def alive(pid):
+    c = comm(pid)
+    if c is None: return False
+    try: return not open("/proc/%d/stat" % pid).read().split(") ")[-1].startswith("Z")
+    except OSError: return False
+def pgid(pid):
+    try: return os.getpgid(pid)
+    except OSError: return None
+
+def lst():
+    try: seen = json.load(open(STATE))
+    except Exception: seen = {}
+    v = views()
+    if v is None: print("[]"); return
+    now = {}
+    for x in v:
+        if x.get("type") != "toplevel" or not x.get("pid"): continue
+        now[str(x["pid"])] = {"app": x.get("app-id") or "", "title": x.get("title") or "", "pg": pgid(int(x["pid"])), "ts": time.time()}
+    mine = {os.getpgrp(), os.getsid(0)}
+    res = []
+    for pid, info in list(seen.items()):
+        if pid in now: continue
+        p = int(pid)
+        keep = None
+        if alive(p) and not comm(p).startswith(SHELL): keep = p
+        elif info.get("pg") and info["pg"] not in mine:
+            # the app itself is gone but something of its group still runs
+            for d in os.listdir("/proc"):
+                if d.isdigit() and pgid(int(d)) == info["pg"] and alive(int(d)) and not comm(int(d)).startswith(SHELL): keep = int(d); break
+        if keep: res.append({"pid": keep, "app": info["app"], "title": info["title"], "name": comm(keep)}); now[str(keep)] = dict(info, bg=True)
+    # keep tracking the ones still in the background
+    for r in res: now.setdefault(str(r["pid"]), seen.get(str(r["pid"]), {}))
+    json.dump(now, open(STATE + ".tmp", "w")); os.replace(STATE + ".tmp", STATE)
+    print(json.dumps(res))
+
+def stop(pid, sig):
+    try: pid = int(pid)
+    except ValueError: return
+    if pid <= 1 or comm(pid) is None or comm(pid).startswith(SHELL): return
+    g = pgid(pid)
+    try:
+        if g and g not in {os.getpgrp(), os.getsid(0)} and g == pid: os.killpg(g, sig)
+        else: os.kill(pid, sig)
+    except OSError: pass
+
+a = sys.argv[1:]
+if a and a[0] == "list": lst()
+elif a and a[0] == "quit": stop(a[1], signal.SIGTERM)
+elif a and a[0] == "kill": stop(a[1], signal.SIGKILL)

@@ -1,0 +1,31 @@
+#!/bin/sh
+# smof-askpass PROMPT : the helper sudo calls to ask for the password. It shows the Smof permission popup (smof auth)
+# and prints what was typed. Talks to the popup through a named pipe.
+d="${XDG_RUNTIME_DIR:-/tmp}/smof-askpass"
+mkdir -p "$d"; chmod 700 "$d"
+f="$d/$$.fifo"
+mkfifo -m 600 "$f" || exit 1
+# the command sudo is about to run
+cmd=$(tr '\0' ' ' < "/proc/$PPID/cmdline" 2>/dev/null | sed 's#^[^ ]*sudo ##; s/^\(-[A-Za-z]\+ \)\+//; s/ *$//')
+[ -z "$cmd" ] && cmd="a command as administrator"
+# asked again within a minute by the same sudo: the last password was wrong
+retry=0
+stamp="$d/last-$PPID"; now=$(date +%s)
+[ -f "$stamp" ] && [ $((now - $(cat "$stamp" 2>/dev/null || echo 0))) -lt 60 ] && retry=1
+echo "$now" > "$stamp"
+find "$d" -name 'last-*' -mmin +5 -delete 2>/dev/null
+/usr/local/bin/smof-ipc auth auth ask "$f" "$cmd" "$retry" "$USER"
+cat "$f" > "$f.pw" &
+cp=$!
+while kill -0 "$cp" 2>/dev/null; do
+  if ! kill -0 "$PPID" 2>/dev/null; then
+    kill "$cp" 2>/dev/null
+    /usr/local/bin/smof-ipc auth auth cancel "$f"
+    rm -f "$f" "$f.pw"; exit 1
+  fi
+  sleep 0.3
+done
+pw=$(cat "$f.pw" 2>/dev/null)
+rm -f "$f" "$f.pw"
+[ "$pw" = "__SMOF_CANCEL__" ] && { rm -f "$stamp"; exit 1; }
+printf '%s\n' "$pw"

@@ -1,0 +1,17 @@
+#!/bin/sh
+# smof-files [FOLDER] : opens Smof Files, or points the open one at FOLDER
+# smof-files --empty-trash : opens the trash and asks if it should be emptied
+cfg=/usr/share/smof/apps/files/shell.qml
+if [ "$1" = "--empty-trash" ]; then
+  if ! pgrep -u "$(id -u)" -f "quickshell -p $cfg" >/dev/null 2>&1; then
+    export LANG=C.UTF-8; (quickshell -p "$cfg" >/dev/null 2>&1 &)
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do sleep 1; quickshell ipc -p "$cfg" call files emptyTrash >/dev/null 2>&1 && exit 0; done; exit 0
+  fi
+  quickshell ipc -p "$cfg" call files emptyTrash >/dev/null 2>&1; exit 0
+fi
+if pgrep -u "$(id -u)" -f "quickshell -p $cfg" >/dev/null 2>&1; then
+  [ -n "$1" ] && quickshell ipc -p "$cfg" call files goto "$1" >/dev/null 2>&1
+  exit 0
+fi
+export LANG=C.UTF-8
+SMOF_PATH="$1" exec quickshell -p "$cfg" >/dev/null 2>&1

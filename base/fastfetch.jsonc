@@ -1,0 +1,21 @@
+{
+  "logo": { "type": "file", "source": "/usr/share/smof/donut.txt", "color": { "1": "magenta" }, "padding": { "right": 3 } },
+  "display": { "separator": "  " },
+  "modules": [
+    "title",
+    "separator",
+    "os",
+    "host",
+    "kernel",
+    "uptime",
+    "packages",
+    "shell",
+    "display",
+    "wm",
+    "terminal",
+    "cpu",
+    "gpu",
+    "memory",
+    "disk"
+  ]
+}

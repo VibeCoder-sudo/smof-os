@@ -1,0 +1,258 @@
+#!/usr/bin/python3 -I
+# smof-tiler: keeps windows in zones. One window stays where it is. A second window pushes the first to the left half
+# (full height) and takes the right half. More windows share the screen in zones: three give a left half and two right
+# quarters, four give quarters, and so on. Maximized, full screen and minimized windows are left alone.
+# It talks to wayfire over its IPC socket (ipc and ipc-rules plugins).
+import socket, json, struct, os, glob, time, select, sys
+
+CONF = os.path.expanduser("~/.config/smof-windows.json")
+BAR, DOCK = 68, 112     # room for the bar on top and the dock at the bottom
+TOP, BOTTOM, SIDE, GAP = BAR, DOCK, 12, 10
+TILING = True
+def load_conf():
+    global TOP, BOTTOM, SIDE, GAP, TILING
+    try:
+        o = json.load(open(CONF))
+    except Exception:
+        o = {}
+    TILING = bool(o.get("tiling", True))
+    GAP = int(o.get("gap", 10)); SIDE = int(o.get("side", 12))
+    clear = bool(o.get("clear", True))
+    TOP = BAR if clear else SIDE
+    BOTTOM = DOCK if clear else SIDE
+def conf_mtime():
+    try: return os.stat(CONF).st_mtime
+    except Exception: return 0
+SKIP_APPS = ()
+
+def send(s, msg):
+    d = json.dumps(msg).encode()
+    s.sendall(struct.pack('<I', len(d)) + d)
+
+def recv(s):
+    h = b''
+    while len(h) < 4:
+        c = s.recv(4 - len(h))
+        if not c: raise EOFError
+        h += c
+    n = struct.unpack('<I', h)[0]
+    b = b''
+    while len(b) < n:
+        c = s.recv(n - len(b))
+        if not c: raise EOFError
+        b += c
+    return json.loads(b)
+
+def sock_path():
+    p = os.environ.get("WAYFIRE_SOCKET")
+    if p and os.path.exists(p): return p
+    c = glob.glob(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid()), "wayfire-*.socket"))
+    return c[0] if c else None
+
+def call(path, method, data=None):
+    s = socket.socket(socket.AF_UNIX); s.connect(path)
+    send(s, {"method": method, "data": data or {}})
+    r = recv(s); s.close(); return r
+
+_cs = None
+def fast_call(path, method, data=None):
+    """like call() but keeps one connection open, so a frame costs one round trip"""
+    global _cs
+    try:
+        if _cs is None:
+            _cs = socket.socket(socket.AF_UNIX); _cs.connect(path)
+        send(_cs, {"method": method, "data": data or {}})
+        return recv(_cs)
+    except Exception:
+        try: _cs.close()
+        except Exception: pass
+        _cs = None
+        raise
+
+DUR = 0.26
+def ease(t): return 1 - (1 - t) ** 3
+
+def animate(path, moves):
+    """moves: list of (view id, from geometry, to geometry). Windows glide to their zones."""
+    moves = [m for m in moves if any(abs(m[1][k] - m[2][k]) >= 2 for k in ("x", "y", "width", "height"))]
+    if not moves: return
+    t0 = time.time()
+    while True:
+        t = (time.time() - t0) / DUR
+        last = t >= 1
+        e = 1.0 if last else ease(t)
+        for vid, a, b in moves:
+            g = {k: int(round(a[k] + (b[k] - a[k]) * e)) for k in ("x", "y", "width", "height")}
+            fast_call(path, "window-rules/configure-view", {"id": vid, "geometry": g})
+        if last: break
+        time.sleep(0.012)
+
+# The layout is a binary tree of splits, not a fixed table. A new window splits the biggest window along its longer
+# side and takes the second half, so two windows give left and right halves, three give a left half and two right
+# quarters, four give quarters, and it goes on like that for any number. When a window goes away its neighbour takes
+# over the freed space, so nothing is left empty.
+tree = None
+
+def leaf_rects(node, r, out):
+    if "id" in node:
+        out[node["id"]] = r; return
+    x, y, w, h = r
+    if node["dir"] == "v":
+        aw = (w - GAP) / 2
+        leaf_rects(node["a"], (x, y, aw, h), out); leaf_rects(node["b"], (x + aw + GAP, y, aw, h), out)
+    else:
+        ah = (h - GAP) / 2
+        leaf_rects(node["a"], (x, y, w, ah), out); leaf_rects(node["b"], (x, y + ah + GAP, w, ah), out)
+
+def tree_remove(node, vid):
+    if node is None: return None
+    if "id" in node: return None if node["id"] == vid else node
+    a = tree_remove(node["a"], vid); b = tree_remove(node["b"], vid)
+    if a is None: return b
+    if b is None: return a
+    node["a"], node["b"] = a, b
+    return node
+
+def tree_ids(node):
+    if node is None: return []
+    if "id" in node: return [node["id"]]
+    return tree_ids(node["a"]) + tree_ids(node["b"])
+
+def tree_replace(node, vid, new):
+    if "id" in node: return new if node["id"] == vid else node
+    node["a"] = tree_replace(node["a"], vid, new); node["b"] = tree_replace(node["b"], vid, new)
+    return node
+
+def tree_add(root, vid, region):
+    if root is None: return {"id": vid}
+    rs = {}
+    leaf_rects(root, region, rs)
+    best, area = None, -1
+    for k, r in rs.items():
+        if r[2] * r[3] >= area - 1: best, area = k, r[2] * r[3]     # ties go to the newest
+    r = rs[best]
+    split = {"dir": "v" if r[2] > r[3] * 1.25 else "h", "a": {"id": best}, "b": {"id": vid}}
+    return tree_replace(root, best, split)
+
+saved = {}      # view id -> geometry before we tiled it
+tiled = set()   # view ids we moved
+
+def relayout(path):
+    load_conf()
+    views = call(path, "window-rules/list-views")
+    outs = call(path, "window-rules/list-outputs")
+    if not outs: return
+    out = outs[0]
+    W, Hh = int(out["geometry"]["width"]), int(out["geometry"]["height"])
+    cand = []
+    for v in views:
+        if v.get("type") != "toplevel" or not v.get("mapped"): continue
+        if v.get("app-id") in SKIP_APPS: continue
+        if v.get("minimized") or v.get("fullscreen") or v.get("tiled-edges", 0) == 15: continue
+        if v.get("parent", -1) != -1: continue
+        # dialogs and popups are not tiled: windows with a fixed size, or a tiny one
+        mn, mx = v.get("min-size") or {}, v.get("max-size") or {}
+        if mx.get("width", 0) > 0 and mx.get("width") == mn.get("width") and mx.get("height") == mn.get("height"): continue
+        if v["geometry"]["width"] < 260 or v["geometry"]["height"] < 160: continue
+        cand.append(v)
+    cand.sort(key=lambda v: v["id"])
+    # a second window of the same program that opened while the first is still there is a dialog (Qt and GTK do not
+    # always mark it as a child), it keeps its own size and is not tiled
+    seen_pid, main_cand, dialogs = set(), [], []
+    for v in cand:
+        pid = v.get("pid", -1)
+        if pid > 0 and pid in seen_pid: dialogs.append(v)
+        else:
+            if pid > 0: seen_pid.add(pid)
+            main_cand.append(v)
+    cand = main_cand
+    back = []
+    for v in dialogs:
+        if v["id"] in saved:
+            g = saved.pop(v["id"]); tiled.discard(v["id"])
+            back.append((v["id"], dict(v["geometry"]), {k: int(g[k]) for k in ("x", "y", "width", "height")}))
+    if back: animate(path, back)
+    alive = {v["id"] for v in views}
+    for i in list(tiled):
+        if i not in alive: tiled.discard(i); saved.pop(i, None)
+    n = len(cand)
+    global tree
+    if n < 2 or not TILING: tree = None
+    if not TILING:
+        # switched off: put every window we moved back where it was
+        mv = []
+        for v in cand:
+            if v["id"] in tiled and v["id"] in saved:
+                g = saved.pop(v["id"]); tiled.discard(v["id"])
+                mv.append((v["id"], dict(v["geometry"]), {k: int(g[k]) for k in ("x", "y", "width", "height")}))
+        animate(path, mv)
+        return
+    if n >= 2:
+        region = (SIDE, TOP, W - 2 * SIDE, Hh - TOP - BOTTOM)
+        have = set(cand_ids := [v["id"] for v in cand])
+        for i in tree_ids(tree):
+            if i not in have: tree = tree_remove(tree, i)
+        for i in cand_ids:
+            if i not in tree_ids(tree): tree = tree_add(tree, i, region)
+        rs = {}
+        leaf_rects(tree, region, rs)
+        mv = []
+        for v in cand:
+            isnew = v["id"] not in saved
+            if isnew: saved[v["id"]] = dict(v["geometry"])
+            tiled.add(v["id"])
+            x, y, w, h = rs[v["id"]]
+            tgt = {"x": int(x), "y": int(y), "width": int(w), "height": int(h)}
+            if isnew:
+                # a window that has just opened goes straight to its zone, it does not grow there from its own size:
+                # the opening animation of the compositor does the entrance
+                fast_call(path, "window-rules/configure-view", {"id": v["id"], "geometry": tgt})
+                continue
+            mv.append((v["id"], dict(v["geometry"]), tgt))
+        animate(path, mv)
+    elif n == 1:
+        v = cand[0]
+        if v["id"] in tiled and v["id"] in saved:
+            g = saved.pop(v["id"]); tiled.discard(v["id"])
+            animate(path, [(v["id"], dict(v["geometry"]), {k: int(g[k]) for k in ("x", "y", "width", "height")})])
+
+def main():
+    import fcntl
+    lk = open(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "smof-tiler.lock"), "w")
+    try: fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError: sys.exit(0)   # already running
+    path = None
+    for _ in range(60):
+        path = sock_path()
+        if path: break
+        time.sleep(1)
+    if not path: sys.exit(1)
+    while True:
+        try:
+            s = socket.socket(socket.AF_UNIX); s.connect(path)
+            send(s, {"method": "window-rules/events/watch", "data": {"events": ["view-mapped", "view-unmapped", "view-minimized", "view-fullscreen", "view-tiled"]}})
+            recv(s)
+            pending = False
+            fast = False                  # a window just opened: lay out at once, do not wait
+            seen = conf_mtime()
+            while True:
+                r, _, _ = select.select([s], [], [], (0.02 if fast else 0.3) if pending else 1.0)
+                if not r and not pending and conf_mtime() != seen:
+                    seen = conf_mtime(); pending = True; continue
+                if r:
+                    ev = recv(s)
+                    if ev.get("event") in ("view-mapped", "view-unmapped", "view-minimized", "view-fullscreen", "view-tiled"):
+                        pending = True
+                        if ev.get("event") == "view-mapped": fast = True
+                elif pending:
+                    pending = False
+                    if not fast: time.sleep(0.15)
+                    fast = False
+                    relayout(path)
+        except Exception as e:
+            import traceback; traceback.print_exc(file=sys.stderr); sys.stderr.flush()
+            time.sleep(1.5)
+            path = sock_path() or path
+
+if __name__ == "__main__":
+    main()

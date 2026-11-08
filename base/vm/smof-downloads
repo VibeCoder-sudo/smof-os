@@ -1,0 +1,67 @@
+#!/usr/bin/python3 -I
+# smof-downloads: tells the status pill about downloads. Watches the folder of the dock folder tile (Downloads by default):
+# a growing .part or .crdownload file is a download in progress, a new finished file is "Downloaded". One copy per user.
+import os, sys, json, time, fcntl, subprocess
+from shlex import quote
+HOME = os.path.expanduser("~")
+RT = os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+lk = open(os.path.join(RT, "smof-downloads.lock"), "w")
+try: fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except OSError: sys.exit(0)
+ACT = "/usr/local/bin/smof-activity"
+PART = (".part", ".crdownload", ".download", ".tmp", ".partial")
+PICS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
+
+def act(*a):
+    try: subprocess.run([ACT] + list(a), timeout=2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception: pass
+
+def folder():
+    try:
+        d = json.load(open(os.path.join(HOME, ".config/smof-dock-stack.json"))).get("dir")
+        if d and os.path.isdir(d): return d
+    except Exception: pass
+    return os.path.join(HOME, "Downloads")
+
+def scan(d):
+    out = {}
+    try:
+        for e in os.scandir(d):
+            if e.name.startswith(".") or not e.is_file(follow_symlinks=False): continue
+            st = e.stat(); out[e.name] = (st.st_size, st.st_mtime)
+    except OSError: pass
+    return out
+
+def human(b):
+    return "%.1f GB" % (b / 1073741824) if b > 1073741824 else ("%.1f MB" % (b / 1048576) if b > 1048576 else "%d KB" % max(1, b // 1024))
+
+cur = folder(); seen = set(scan(cur)); sizes = {}
+while True:
+    time.sleep(1)
+    d = folder()
+    if d != cur: cur = d; seen = set(scan(d)); sizes = {}; continue
+    now = scan(d); t = time.time()
+    for name, (size, mt) in now.items():
+        low = name.lower()
+        if low.endswith(PART):
+            prev = sizes.get(name)
+            sizes[name] = size
+            if prev is not None and size != prev:
+                base = name[:name.rfind(".")]
+                act("set", "download", "--title", "Downloading " + base, "--sub", human(size) + " so far", "--icon", "/usr/share/icons/Papirus/64x64/places/folder-download.svg", "--size", "tiny", "--ttl", "4")
+            continue
+        if name in seen: continue
+        # a new file counts as finished when it stopped growing
+        if sizes.get(name) is None or sizes.get(name) != size:
+            sizes[name] = size; continue
+        seen.add(name)
+        path = os.path.join(d, name)
+        pic = low.endswith(PICS)
+        args = ["set", "download-done", "--title", "Downloaded", "--sub", name + ", " + human(size), "--icon", "/usr/share/icons/Papirus/64x64/places/folder-download.svg",
+                "--size", "medium" if pic else "tiny", "--important", "--ttl", "7", "--action", "Open=/usr/local/bin/smof-fileops open " + quote(path)]
+        if pic: args += ["--image", path]
+        act("end", "download")
+        act(*args)
+    # forget partial files that are gone
+    for n in list(sizes):
+        if n not in now: sizes.pop(n, None)

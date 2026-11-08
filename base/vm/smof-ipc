@@ -1,0 +1,4 @@
+#!/bin/sh
+# smof-ipc APP TARGET FUNCTION [ARG...]  : calls a function of a running Smof app (bar, dock, notifd, launcher, settings, wallpaper)
+app=$1; shift
+exec quickshell ipc -p "/usr/share/smof/apps/$app/shell.qml" call "$@" >/dev/null 2>&1

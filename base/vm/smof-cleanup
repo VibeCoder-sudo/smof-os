@@ -1,0 +1,20 @@
+#!/usr/bin/python3 -I
+# smof-cleanup: frees disk space without touching anything the user keeps: the Trash, thumbnails, the Homebrew cache and old package files.
+# The package cache needs administrator rights, so the permission popup asks for them.
+import os, shutil, subprocess, sys
+ACT = "/usr/local/bin/smof-activity"
+HOME = os.path.expanduser("~")
+def act(*a):
+    try: subprocess.run([ACT] + list(a), timeout=3, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception: pass
+def free(): return shutil.disk_usage("/").free
+before = free()
+act("set", "cleanup", "--title", "Cleaning up", "--sub", "Emptying the Trash and caches", "--icon", "/usr/share/icons/Papirus/64x64/devices/drive-harddisk.svg", "--size", "tiny", "--pid", str(os.getpid()), "--ttl", "0")
+subprocess.run(["/usr/local/bin/smof-fileops", "emptytrash"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+shutil.rmtree(os.path.join(HOME, ".cache/thumbnails"), ignore_errors=True)
+if shutil.which("brew"): subprocess.run(["brew", "cleanup", "-s"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+act("set", "cleanup", "--title", "Cleaning up", "--sub", "Old package files, the permission popup may ask", "--icon", "/usr/share/icons/Papirus/64x64/devices/drive-harddisk.svg", "--size", "tiny", "--pid", str(os.getpid()), "--ttl", "0")
+subprocess.run(["/usr/local/bin/sudo", "pacman", "-Sc", "--noconfirm"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+got = max(0, free() - before)
+act("end", "cleanup")
+act("set", "cleanup-done", "--title", "Cleaned up", "--sub", "%.1f GB freed" % (got / 1073741824) if got > 100 * 1048576 else "%d MB freed" % (got // 1048576), "--icon", "/usr/share/icons/Papirus/64x64/devices/drive-harddisk.svg", "--size", "tiny", "--important", "--ttl", "6")

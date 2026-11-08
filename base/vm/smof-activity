@@ -1,0 +1,84 @@
+#!/usr/bin/python3 -I
+# smof-activity: what is going on right now, shown in the pill of the top bar (Always on Control).
+#   set ID [--title T] [--sub S] [--icon NAME] [--progress 0-100] [--size super|tiny|medium|expanded]
+#          [--important] [--image PATH] [--log TEXT] [--extra TEXT] [--action "Label=command"]... [--ttl SEC] [--pid PID]
+#   end ID [--note TEXT]
+#   list                 JSON of everything alive, expired entries are dropped
+#   clear                forget everything
+# An activity lives while its program keeps calling `set` (ttl, 20 s by default), or while --pid is alive, or until `end`.
+import os, sys, json, time, fcntl, tempfile
+RT = os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+F = os.path.join(RT, "smof-activity.json")
+LK = os.path.join(RT, "smof-activity.lock")
+
+def alive(pid):
+    try: os.kill(int(pid), 0); return True
+    except (OSError, ValueError, TypeError): return False
+
+class Store:
+    def __enter__(self):
+        self.lk = open(LK, "w"); fcntl.flock(self.lk, fcntl.LOCK_EX)
+        try: self.d = json.load(open(F))
+        except Exception: self.d = {}
+        return self
+    def prune(self):
+        now = time.time()
+        for k, a in list(self.d.items()):
+            if a.get("ended"):
+                if now - a["ended"] > a.get("hold", 3): del self.d[k]
+            elif a.get("pid") and not alive(a["pid"]): del self.d[k]
+            elif not a.get("pid") and a.get("ttl", 20) > 0 and now - a["t"] > a.get("ttl", 20): del self.d[k]
+    def __exit__(self, *e):
+        self.prune()
+        t = F + ".tmp"; json.dump(self.d, open(t, "w")); os.replace(t, F)
+        fcntl.flock(self.lk, fcntl.LOCK_UN); self.lk.close()
+
+def parse(args):
+    o = {"actions": []}; i = 0
+    names = {"--title": "title", "--sub": "sub", "--icon": "icon", "--size": "size", "--image": "image", "--log": "log", "--extra": "extra", "--note": "note"}
+    while i < len(args):
+        a = args[i]
+        if a in names and i + 1 < len(args): o[names[a]] = args[i + 1]; i += 2
+        elif a == "--progress" and i + 1 < len(args):
+            try: o["progress"] = max(0, min(100, float(args[i + 1])))
+            except ValueError: pass
+            i += 2
+        elif a == "--ttl" and i + 1 < len(args):
+            try: o["ttl"] = float(args[i + 1])
+            except ValueError: pass
+            i += 2
+        elif a == "--pid" and i + 1 < len(args): o["pid"] = args[i + 1]; i += 2
+        elif a == "--important": o["important"] = True; i += 1
+        elif a == "--action" and i + 1 < len(args):
+            l, _, c = args[i + 1].partition("="); o["actions"].append({"label": l, "cmd": c}); i += 2
+        else: i += 1
+    return o
+
+def main():
+    a = sys.argv[1:]
+    if not a: return
+    c = a[0]
+    if c == "list":
+        with Store() as s: print(json.dumps(s.d))
+    elif c == "clear":
+        with Store() as s: s.d.clear()
+    elif c == "set" and len(a) > 1:
+        o = parse(a[2:]); now = time.time()
+        with Store() as s:
+            cur = s.d.get(a[1], {"started": now, "actions": []})
+            cur.pop("ended", None)
+            acts = o.pop("actions")
+            cur.update(o)
+            if acts: cur["actions"] = acts
+            cur["id"] = a[1]; cur["t"] = now
+            if "size" in cur and cur["size"] not in ("super", "tiny", "medium", "expanded"): cur.pop("size")
+            s.d[a[1]] = cur
+    elif c == "end" and len(a) > 1:
+        o = parse(a[2:])
+        with Store() as s:
+            cur = s.d.get(a[1])
+            if cur:
+                cur["ended"] = time.time(); cur["hold"] = 3 if o.get("note") else 0.4
+                if o.get("note"): cur["note"] = o["note"]; cur["progress"] = 100
+                cur["t"] = time.time()
+main()

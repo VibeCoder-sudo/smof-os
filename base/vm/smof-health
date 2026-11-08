@@ -1,0 +1,61 @@
+#!/usr/bin/python3 -I
+# smof-health: warns in the status pill when memory or the disk is nearly full, and when updates are waiting. One copy per user.
+# Thresholds can be changed for tests with SMOF_MEM_PCT, SMOF_DISK_GB, SMOF_FAST.
+import os, sys, time, fcntl, subprocess, json, shutil
+RT = os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+lk = open(os.path.join(RT, "smof-health.lock"), "w")
+try: fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except OSError: sys.exit(0)
+ACT = "/usr/local/bin/smof-activity"
+MEM_PCT = float(os.environ.get("SMOF_MEM_PCT", "12"))
+DISK_GB = float(os.environ.get("SMOF_DISK_GB", "1.5"))
+FAST = os.environ.get("SMOF_FAST") == "1"
+P = "/usr/share/icons/Papirus/64x64/"
+
+def act(*a):
+    try: subprocess.run([ACT] + list(a), timeout=3, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception: pass
+
+def meminfo():
+    d = {}
+    for l in open("/proc/meminfo"):
+        k, _, v = l.partition(":")
+        d[k] = int(v.split()[0]) * 1024
+    return d["MemTotal"], d.get("MemAvailable", d["MemFree"])
+
+def gb(b): return "%.1f GB" % (b / 1073741824)
+def mb(b): return "%d MB" % (b // 1048576)
+
+last = {"mem": 0, "disk": 0, "upd": 0}
+low_mem_ticks = 0
+last_count = -1
+start = time.time()
+while True:
+    now = time.time()
+    # memory: low for two checks in a row, then at most one warning every 15 minutes
+    total, avail = meminfo()
+    low = avail < total * MEM_PCT / 100 or avail < 300 * 1048576 if MEM_PCT < 100 else True
+    low_mem_ticks = low_mem_ticks + 1 if low else 0
+    if low_mem_ticks >= 2 and now - last["mem"] > (5 if FAST else 900):
+        last["mem"] = now
+        act("set", "health-mem", "--title", "Memory is almost full", "--sub", mb(avail) + " left, close what you do not need", "--icon", "utilities-system-monitor",
+            "--size", "medium", "--important", "--ttl", "10", "--action", "See what uses it=foot -e top -o %MEM")
+    # disk: at most one warning an hour
+    try:
+        du = shutil.disk_usage("/")
+        if du.free < DISK_GB * 1073741824 and now - last["disk"] > (5 if FAST else 3600):
+            last["disk"] = now
+            act("set", "health-disk", "--title", "Disk is almost full", "--sub", "Only " + gb(du.free) + " left", "--icon", P + "devices/drive-harddisk.svg",
+                "--size", "medium", "--important", "--ttl", "10", "--action", "Free up space=/usr/local/bin/smof-cleanup")
+    except OSError: pass
+    # updates: a minute after start, then every six hours, only when the number changed or a day passed
+    if now - start > (3 if FAST else 60) and now - last["upd"] > (4 if FAST else 21600):
+        last["upd"] = now
+        try:
+            n = len([l for l in subprocess.run(["pacman", "-Qu"], capture_output=True, text=True, timeout=30).stdout.splitlines() if l.strip()])
+        except Exception: n = 0
+        if n > 0 and (n != last_count or FAST):
+            act("set", "health-upd", "--title", "%d update%s ready" % (n, "" if n == 1 else "s"), "--sub", "New versions of installed software", "--icon", "org.gnome.Software",
+                "--size", "tiny", "--important", "--ttl", "8", "--action", "Update=/usr/local/bin/smof-store; sleep 1.5; /usr/local/bin/smof-ipc store store goto updates")
+        last_count = n
+    time.sleep(2 if FAST else 10)

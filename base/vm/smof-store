@@ -1,0 +1,15 @@
+#!/bin/sh
+# smof-store [PAGE|log] : opens Smof Store, or points the open one at PAGE, or shows the log of what it installs
+cfg=/usr/share/smof/apps/store/shell.qml
+if pgrep -u "$(id -u)" -f "quickshell -p $cfg" >/dev/null 2>&1; then
+  if [ "$1" = log ]; then quickshell ipc -p "$cfg" call store log >/dev/null 2>&1
+  elif [ -n "$1" ]; then quickshell ipc -p "$cfg" call store goto "$1" >/dev/null 2>&1; fi
+  exit 0
+fi
+export LANG=C.UTF-8
+if [ "$1" = log ]; then
+  (quickshell -p "$cfg" >/dev/null 2>&1 &)
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do sleep 1; quickshell ipc -p "$cfg" call store log >/dev/null 2>&1 && exit 0; done
+  exit 0
+fi
+exec quickshell -p "$cfg" >/dev/null 2>&1

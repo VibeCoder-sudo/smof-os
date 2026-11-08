@@ -1,0 +1,15 @@
+#!/bin/sh
+# smof-shell : starts the Smof desktop. Every part is its own app (its own process) and is started again if it ever stops.
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/smof-shell.lock"
+exec 9>"$LOCK"
+flock -n 9 || exit 0
+export LANG=C.UTF-8
+for a in wallpaper notifd bar dock launcher auth; do
+  (
+    while :; do
+      quickshell -p "/usr/share/smof/apps/$a/shell.qml" >"${XDG_RUNTIME_DIR:-/tmp}/smof-$a.log" 2>&1
+      sleep 1
+    done
+  ) &
+done
+wait

@@ -1,0 +1,15 @@
+#!/bin/sh
+# smof-shot full|area : screenshot into ~/Pictures/Screenshots, also copied to the clipboard, with a notification
+dir="$HOME/Pictures/Screenshots"; mkdir -p "$dir"
+f="$dir/Screenshot $(date '+%Y-%m-%d %H.%M.%S').png"
+case "$1" in
+  area)
+    g=$(slurp -b 00000055 -c 6B4FA8ff -w 2 2>/dev/null) || exit 0
+    [ -n "$g" ] || exit 0
+    grim -g "$g" "$f" || exit 1 ;;
+  *) grim "$f" || exit 1 ;;
+esac
+/usr/local/bin/smof-sound shot &
+wl-copy --type image/png < "$f" 2>/dev/null
+/usr/local/bin/smof-activity set shot --title "Screenshot saved" --sub "In Pictures, Screenshots" --image "$f" --icon system-file-manager --size medium --important --ttl 6 --action "Open=/usr/local/bin/smof-files $dir" 2>/dev/null
+notify-send -a Screenshot -i "$f" "Screenshot saved" "In Pictures, Screenshots. Also on the clipboard." 2>/dev/null

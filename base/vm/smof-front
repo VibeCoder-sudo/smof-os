@@ -1,0 +1,59 @@
+#!/usr/bin/python3 -I
+# smof-front: writes where the focused window is to $XDG_RUNTIME_DIR/smof-front.json, so the bar and the dock can step aside
+# when a window comes over them. One copy runs, it checks a few times a second and writes only when something changed.
+import socket, json, struct, os, glob, sys, time, fcntl
+RT = os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+OUT = os.path.join(RT, "smof-front.json")
+
+def send(s, m):
+    d = json.dumps(m).encode(); s.sendall(struct.pack('<I', len(d)) + d)
+def recv(s):
+    def rd(n):
+        b = b""
+        while len(b) < n:
+            c = s.recv(n - len(b))
+            if not c: raise EOFError
+            b += c
+        return b
+    n = struct.unpack('<I', rd(4))[0]; return json.loads(rd(n))
+def sock_path():
+    p = os.environ.get("WAYFIRE_SOCKET")
+    if p and os.path.exists(p): return p
+    c = glob.glob(os.path.join(RT, "wayfire-*.socket")); return c[0] if c else None
+def call(path, method, data=None):
+    s = socket.socket(socket.AF_UNIX); s.settimeout(2); s.connect(path)
+    send(s, {"method": method, "data": data or {}}); r = recv(s); s.close(); return r
+
+def main():
+    lk = open(os.path.join(RT, "smof-front.lock"), "w")
+    try: fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError: return
+    last = None; path = None
+    while True:
+        try:
+            path = sock_path()
+            if not path: time.sleep(1); continue
+            outs = call(path, "window-rules/list-outputs")
+            H = int(outs[0]["geometry"]["height"]) if outs else 0
+            views = call(path, "window-rules/list-views")
+            best = None
+            for v in views:
+                if v.get("type") != "toplevel" or not v.get("mapped") or v.get("minimized"): continue
+                if v.get("activated") or v.get("focused"):
+                    best = v; break
+            if best is None:
+                f = call(path, "window-rules/get-focused-view")
+                v = f.get("info") if isinstance(f, dict) and "info" in f else f
+                if isinstance(v, dict) and v.get("type") == "toplevel" and not v.get("minimized"): best = v
+            if best:
+                g = best["geometry"]
+                cur = {"has": True, "top": g["y"], "bottom": g["y"] + g["height"], "h": H, "fs": bool(best.get("fullscreen"))}
+            else:
+                cur = {"has": False, "top": 0, "bottom": 0, "h": H, "fs": False}
+            if cur != last:
+                open(OUT + ".tmp", "w").write(json.dumps(cur)); os.replace(OUT + ".tmp", OUT); last = cur
+        except Exception:
+            time.sleep(1.5)
+        time.sleep(0.3)
+
+main()

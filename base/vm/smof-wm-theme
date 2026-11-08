@@ -1,0 +1,15 @@
+#!/bin/sh
+# smof-wm-theme light|dark : recolors the window frames in the wayfire config, wayfire reloads it by itself
+F="$HOME/.config/wayfire.ini"
+if [ "$1" = dark ]; then
+  A='\\#2A2060F0'; I='\\#1B1640D0'
+  FG='0.133 0.110 0.224 0.98'; BG='0.102 0.086 0.176 0.96'; TX='0.957 0.941 1.0 1.0'; TXI='0.957 0.941 1.0 0.55'; BT='0.957 0.941 1.0 0.92'
+else
+  A='\\#6B4FA8F0'; I='\\#8573B8CC'
+  FG='0.957 0.945 0.988 0.98'; BG='0.925 0.914 0.969 0.95'; TX='0.09 0.07 0.16 1.0'; TXI='0.09 0.07 0.16 0.55'; BT='0.09 0.07 0.16 0.9'
+fi
+sed -i "s/^active_color = .*/active_color = $A/; s/^inactive_color = .*/inactive_color = $I/; s/^fg_color = .*/fg_color = $FG/; s/^bg_color = .*/bg_color = $BG/; s/^fg_text_color = .*/fg_text_color = $TX/; s/^bg_text_color = .*/bg_text_color = $TXI/; s/^button_color = .*/button_color = $BT/" "$F"
+# the title text is only redrawn when the font string changes, so nudge it to pick up the new text colour
+CUR=$(sed -n 's/^title_font = Google Sans Flex //p' "$F" | head -1)
+if [ "$CUR" = "12" ]; then N="12.01"; else N="12"; fi
+sed -i "s/^title_font = .*/title_font = Google Sans Flex $N/" "$F"

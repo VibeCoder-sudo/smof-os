@@ -1,0 +1,23 @@
+#!/bin/sh
+export XCURSOR_THEME=Adwaita XCURSOR_SIZE=24 XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=smof XDG_CURRENT_DESKTOP=smof LANG=C.UTF-8 WLR_NO_HARDWARE_CURSORS=1
+# apps expose their menus and widgets on the accessibility bus, Smof reads app menus from there
+export QT_ACCESSIBILITY=1 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 GTK_A11Y=atspi
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+CFG="$HOME/.config/wayfire.ini"
+# frame colours follow the saved light or dark choice
+[ -x /usr/local/bin/smof-wm-theme ] && /usr/local/bin/smof-wm-theme "$(cat /var/lib/smof/theme 2>/dev/null || echo light)"
+# the custom frames plugin is used when it is installed and did not fail before
+if [ -f /usr/lib/wayfire/libpixdecor.so ] && [ -f /usr/lib/wayfire/librounded-corners.so ] && [ ! -f "$HOME/.config/smof-nopix" ] && grep -q '^\[pixdecor\]' "$CFG" 2>/dev/null; then
+  sed -i 's/ command decoration wm-actions/ command pixdecor rounded-corners wm-actions/' "$CFG"
+fi
+T=$(date +%s)
+systemd-cat -t smof-session wayfire
+RC=$?
+# safety net: if wayfire dies right after start with the custom frames plugin, go back to the plain frames and start again
+if [ $RC -ne 0 ] && [ $(( $(date +%s) - T )) -lt 20 ] && grep -q ' pixdecor rounded-corners ' "$CFG" 2>/dev/null; then
+  sed -i 's/ pixdecor rounded-corners / decoration /' "$CFG"
+  touch "$HOME/.config/smof-nopix"
+  touch "$HOME/.config/smof-nopix"
+  exec systemd-cat -t smof-session wayfire
+fi
+exit $RC

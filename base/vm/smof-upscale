@@ -1,0 +1,87 @@
+#!/usr/bin/python3 -I
+# smof-upscale PICTURE [--scale 2|3|4] [--mode fast|smart|best] [--out FILE]
+#   fast   Lanczos plus gentle sharpening, instant, no network
+#   smart  small Real-ESRGAN network on the CPU (good for most pictures and drawings)
+#   best   the big Real-ESRGAN network, slow but the cleanest on photos
+# Prints lines of JSON: {"progress": N} while working and {"ok": true, "path": ...} or {"ok": false, "error": ...} at the end.
+import sys, os, json, subprocess, tempfile, argparse
+from shlex import quote as shlex_quote
+from PIL import Image, ImageFilter, ImageOps
+
+NAME = [""]
+IMG = [""]
+INFO = [""]
+MODELS = "/usr/share/smof/models/sr"
+BIN = "/usr/local/bin/smof-sr"
+
+def say(o): print(json.dumps(o)); sys.stdout.flush()
+
+ACT = "/usr/local/bin/smof-activity"
+_last = [0.0]
+def act(*args, force=False):
+    """show it in the status pill; progress is sent at most once a second"""
+    import time
+    if not force and time.time() - _last[0] < 1.0: return
+    _last[0] = time.time()
+    if os.geteuid() == 0 or not os.environ.get("XDG_RUNTIME_DIR"): return
+    try: subprocess.run([ACT] + list(args), timeout=2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception: pass
+
+def unique(path):
+    base, ext = os.path.splitext(path); p = path; n = 2
+    while os.path.exists(p): p = "%s %d%s" % (base, n, ext); n += 1
+    return p
+
+def net_run(img, model, scale, tile):
+    with tempfile.TemporaryDirectory(prefix="smof-sr-") as d:
+        a = os.path.join(d, "in.ppm"); b = os.path.join(d, "out.ppm")
+        img.convert("RGB").save(a)
+        p = subprocess.Popen([BIN, a, b, os.path.join(MODELS, model), str(scale), str(tile)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in p.stdout:
+            if line.startswith("progress "):
+                pr = int(line.split()[1]); say({"progress": pr})
+                act("set", "upscale", "--title", "Upscaling " + NAME[0], "--sub", INFO[0] + ", " + str(pr) + "%", "--icon", "applications-graphics", "--progress", str(pr), "--size", "medium", "--pid", str(os.getpid()), "--image", IMG[0])
+        err = p.stderr.read(); p.wait()
+        if p.returncode != 0: raise RuntimeError(err.strip() or "the upscaler stopped")
+        r = Image.open(b); r.load(); return r
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("path"); ap.add_argument("--scale", type=int, default=2, choices=(2, 3, 4))
+    ap.add_argument("--mode", default="smart", choices=("fast", "smart", "best")); ap.add_argument("--out")
+    a = ap.parse_args()
+    NAME[0] = os.path.basename(a.path); INFO[0] = "%dx, %s" % (a.scale, a.mode); IMG[0] = os.path.abspath(a.path)
+    try:
+        im = ImageOps.exif_transpose(Image.open(a.path)); im.load()
+    except Exception:
+        say({"ok": False, "error": "This is not a picture I can open"}); return
+    w, h = im.size
+    if a.mode != "fast" and w * h > 4_000_000:
+        say({"ok": False, "error": "This picture is too big for smart mode, use fast"}); return
+    if w * a.scale > 16000 or h * a.scale > 16000:
+        say({"ok": False, "error": "The result would be too large"}); return
+    alpha = None
+    if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+        alpha = im.convert("RGBA").getchannel("A")
+    rgb = im.convert("RGB")
+    tw, th = w * a.scale, h * a.scale
+    try:
+        if a.mode == "fast":
+            out = rgb.resize((tw, th), Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=0.6 * a.scale, percent=35, threshold=3))
+        elif a.mode == "smart":
+            out = net_run(rgb, "realesr-animevideov3-x%d" % a.scale, a.scale, 160)
+        else:
+            out = net_run(rgb, "realesrgan-x4plus", 4, 80)
+            if a.scale != 4: out = out.resize((tw, th), Image.LANCZOS)
+    except Exception as e:
+        act("set", "upscale", "--title", "Upscaling failed", "--sub", NAME[0], "--icon", "applications-graphics", "--size", "tiny", "--important", "--ttl", "6", force=True)
+        say({"ok": False, "error": str(e)}); return
+    if alpha is not None:
+        out = out.convert("RGBA"); out.putalpha(alpha.resize((tw, th), Image.LANCZOS))
+    dest = a.out or unique(os.path.join(os.path.dirname(os.path.abspath(a.path)), os.path.splitext(os.path.basename(a.path))[0] + " x%d.png" % a.scale))
+    out.save(dest, "PNG")
+    act("end", "upscale", force=True)
+    act("set", "upscale-done", "--title", "Picture upscaled", "--sub", "%s, %d x %d pixels" % (NAME[0], tw, th), "--icon", "applications-graphics", "--image", dest, "--size", "medium", "--important", "--ttl", "8", "--action", "Open=/usr/local/bin/smof-fileops open " + shlex_quote(dest), force=True)
+    say({"ok": True, "path": dest, "width": tw, "height": th})
+
+main()

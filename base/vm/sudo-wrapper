@@ -1,0 +1,16 @@
+#!/bin/sh
+# sudo that asks for the password in the Smof permission popup instead of the terminal, when the desktop is running
+real=/usr/bin/sudo
+# makepkg calls `sudo -k pacman ...`: -k there only forgets the old password, the command still needs one, so it is not a reason to skip the popup
+# only look at sudo's own options, the ones before the command, so `sudo pacman -S x` is not taken for `sudo -S`
+for a in "$@"; do
+  case "$a" in
+    -n|-S|-h|-V|-l|-A|-e|--help|--version|--list|--stdin|--askpass|--non-interactive|--reset-timestamp|--remove-timestamp|--edit) exec $real "$@" ;;
+    -*) ;;
+    *) break ;;
+  esac
+done
+if [ -n "$WAYLAND_DISPLAY" ] && pgrep -u "$(id -u)" -f "apps/auth/shell.qml" >/dev/null 2>&1; then
+  SUDO_ASKPASS=/usr/local/bin/smof-askpass exec $real -A "$@"
+fi
+exec $real "$@"

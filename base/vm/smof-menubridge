@@ -1,0 +1,144 @@
+#!/usr/bin/python3 -I
+# smof-menubridge: reads the menu bar of the window in front through the accessibility bus (AT-SPI), so the top bar
+# can show the app's own menus, and presses a menu item on request.
+#   smof-menubridge list            -> JSON: {"app": name, "menus": [{label, items: [...]}]} for the focused window
+#   smof-menubridge press 0.2.1     -> presses the item with that path in the focused window's menu bar
+# Menu items: {label, enabled, checked, kind: "item"|"check"|"radio"|"sep", key: shortcut, path, children: [...]}
+import sys, json, os, glob, socket, struct
+
+def wf_path():
+    p = os.environ.get("WAYFIRE_SOCKET")
+    if p and os.path.exists(p): return p
+    c = glob.glob(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid()), "wayfire-*.socket"))
+    return c[0] if c else None
+
+def wf_call(method):
+    p = wf_path()
+    if not p: return None
+    try:
+        s = socket.socket(socket.AF_UNIX); s.settimeout(1.0); s.connect(p)
+        d = json.dumps({"method": method, "data": {}}).encode()
+        s.sendall(struct.pack('<I', len(d)) + d)
+        h = s.recv(4); n = struct.unpack('<I', h)[0]
+        b = b''
+        while len(b) < n: b += s.recv(n - len(b))
+        s.close()
+        return json.loads(b)
+    except Exception:
+        return None
+
+import gi
+gi.require_version('Atspi', '2.0')
+from gi.repository import Atspi
+Atspi.init()
+
+R = Atspi.Role
+ST = Atspi.StateType
+
+def children(a):
+    out = []
+    try:
+        for i in range(a.get_child_count()):
+            c = a.get_child_at_index(i)
+            if c is not None: out.append(c)
+    except Exception: pass
+    return out
+
+def find_app():
+    info = wf_call("window-rules/get-focused-view")
+    v = (info or {}).get("info") or {}
+    pid, appid = v.get("pid", -1), (v.get("app-id") or "").lower()
+    desk = Atspi.get_desktop(0)
+    best = None
+    for a in children(desk):
+        try:
+            if a.get_process_id() == pid: return a
+            n = (a.get_name() or "").lower()
+            if appid and (n == appid or n in appid or appid in n): best = a
+        except Exception: pass
+    return best
+
+def find_menubar(app):
+    frames = children(app)
+    # the active window first
+    def active(f):
+        try: return f.get_state_set().contains(ST.ACTIVE)
+        except Exception: return False
+    frames.sort(key=lambda f: 0 if active(f) else 1)
+    for f in frames:
+        stack = [(f, 0)]
+        while stack:
+            a, d = stack.pop(0)
+            try:
+                if a.get_role() == R.MENU_BAR: return a
+            except Exception: continue
+            if d < 4:
+                for c in children(a): stack.append((c, d + 1))
+    return None
+
+def conv(items_parent, prefix, depth):
+    out = []
+    for i, it in enumerate(children(items_parent)):
+        try: role = it.get_role()
+        except Exception: continue
+        path = prefix + [i]
+        if role == R.SEPARATOR:
+            out.append({"kind": "sep"}); continue
+        if role not in (R.MENU_ITEM, R.CHECK_MENU_ITEM, R.RADIO_MENU_ITEM, R.MENU, R.POPUP_MENU):
+            continue
+        label = it.get_name() or ""
+        try:
+            sset = it.get_state_set()
+            enabled = sset.contains(ST.ENABLED) or sset.contains(ST.SENSITIVE)
+            checked = sset.contains(ST.CHECKED)
+        except Exception:
+            enabled, checked = True, False
+        key = ""
+        try:
+            kb = Atspi.Action.get_key_binding(it, 0) or ""
+            key = [k for k in kb.split(";") if k][-1] if kb else ""
+        except Exception: pass
+        node = {"label": label, "enabled": bool(enabled), "checked": bool(checked), "key": key, "path": ".".join(str(x) for x in path),
+                "kind": "check" if role == R.CHECK_MENU_ITEM else ("radio" if role == R.RADIO_MENU_ITEM else "item"), "children": []}
+        if depth < 4:
+            for j, sub in enumerate(children(it)):
+                try:
+                    if sub.get_role() in (R.MENU, R.POPUP_MENU):
+                        node["children"] = conv(sub, path + [j], depth + 1); break
+                except Exception: pass
+        out.append(node)
+    return out
+
+def walk_path(bar, path):
+    a = bar
+    for idx in path.split("."):
+        a = a.get_child_at_index(int(idx))
+        if a is None: return None
+    return a
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "list"
+    app = find_app()
+    if app is None:
+        print(json.dumps({"app": "", "menus": []})); return
+    bar = find_menubar(app)
+    if cmd == "list":
+        menus = []
+        if bar is not None:
+            for i, m in enumerate(children(bar)):
+                try:
+                    if m.get_role() not in (R.MENU_ITEM, R.MENU): continue
+                except Exception: continue
+                node = {"label": m.get_name() or "", "path": str(i), "items": []}
+                for j, sub in enumerate(children(m)):
+                    try:
+                        if sub.get_role() in (R.MENU, R.POPUP_MENU): node["items"] = conv(sub, [i, j], 1); break
+                    except Exception: pass
+                menus.append(node)
+        print(json.dumps({"app": app.get_name() or "", "menus": menus}))
+    elif cmd == "press" and bar is not None and len(sys.argv) > 2:
+        t = walk_path(bar, sys.argv[2])
+        if t is not None:
+            Atspi.Action.do_action(t, 0)
+
+main()

@@ -1,0 +1,119 @@
+#!/usr/bin/python3 -I
+# smof-input: scroll direction, keyboard layouts and key bindings in ~/.config/wayfire.ini. Wayfire reloads the file by itself.
+#   get | set KEY true|false             scroll direction. KEYS: natural_scroll (touchpad), mouse_natural_scroll (mouse wheel)
+#   list                                 every keyboard layout the system knows, with its variants, as JSON
+#   layouts get                          {"layouts": [{"l": "us", "v": ""}, ...], "toggle": "ctrl_space"}   the first layout is the active one
+#   layouts set LAYOUTS VARIANTS TOGGLE  e.g. layouts set us,ru ,phonetic ctrl_space
+#   layouts rotate                       the next layout becomes the active one
+#   ini set SECTION KEY VALUE            any option of the config, used by the setup scripts
+import os, sys, json, re
+P = os.path.expanduser("~/.config/wayfire.ini")
+KEYS = ("natural_scroll", "mouse_natural_scroll")
+TOGGLES = {"ctrl_space": ("<ctrl> KEY_SPACE", "Ctrl + Space"), "super_space": ("<super> KEY_SPACE", "Super + Space"), "alt_space": ("<alt> KEY_SPACE", "Alt + Space")}
+ROTATE = "/usr/local/bin/smof-input layouts rotate"
+
+def read(): return open(P).read().split("\n") if os.path.exists(P) else []
+def write(L):
+    os.makedirs(os.path.dirname(P), exist_ok=True)
+    open(P + ".tmp", "w").write("\n".join(L).rstrip("\n") + "\n"); os.replace(P + ".tmp", P)
+def sec_of(l):
+    m = re.match(r"\s*\[(.+)\]\s*$", l); return m.group(1) if m else None
+
+def ini_get(sec, key):
+    cur = ""
+    for l in read():
+        s = sec_of(l)
+        if s is not None: cur = s; continue
+        if cur == sec:
+            k, _, v = l.partition("=")
+            if k.strip() == key: return v.strip()
+    return ""
+
+def ini_put(sec, key, val):
+    """set key in [sec]; val None removes it"""
+    L = read(); out = []; cur = ""; done = False; seen = False
+    for l in L:
+        s = sec_of(l)
+        if s is not None:
+            if cur == sec and not done and val is not None: out.append("%s = %s" % (key, val)); done = True
+            cur = s; seen = seen or s == sec
+        elif cur == sec and l.partition("=")[0].strip() == key:
+            if not done and val is not None: out.append("%s = %s" % (key, val)); done = True
+            continue
+        out.append(l)
+    if not done and val is not None:
+        if seen:
+            # at the end of the section, before the next one
+            i = len(out)
+            for n in range(len(out) - 1, -1, -1):
+                if sec_of(out[n]) == sec: i = n + 1; break
+            j = i
+            while j < len(out) and sec_of(out[j]) is None and out[j].strip() != "": j += 1
+            out.insert(j, "%s = %s" % (key, val))
+        else: out += ["", "[%s]" % sec, "%s = %s" % (key, val)]
+    write(out)
+
+def get():
+    return {k: ini_get("input", k).lower() in ("true", "1", "yes") for k in KEYS}
+
+def lst():
+    sec = ""; names, variants = {}, {}
+    try: lines = open("/usr/share/X11/xkb/rules/base.lst").read().split("\n")
+    except OSError: lines = []
+    for l in lines:
+        if l.startswith("! "): sec = l[2:].strip(); continue
+        if not l.strip(): continue
+        if sec == "layout":
+            p = l.split(None, 1)
+            if len(p) == 2: names[p[0]] = p[1].strip()
+        elif sec == "variant":
+            p = l.split(None, 2)
+            if len(p) == 3 and p[1].endswith(":"): variants.setdefault(p[1][:-1], []).append({"c": p[0], "n": p[2].strip()})
+    res = [{"c": c, "n": n, "v": variants.get(c, [])} for c, n in names.items() if c != "custom"]
+    res.sort(key=lambda x: x["n"].lower())
+    print(json.dumps({"layouts": res, "toggles": [{"c": k, "n": v[1]} for k, v in TOGGLES.items()]}))
+
+def lv():
+    ls = [x.strip() for x in (ini_get("input", "xkb_layout") or "us").split(",")]
+    vs = [x.strip() for x in ini_get("input", "xkb_variant").split(",")]
+    return [(l, vs[i] if i < len(vs) else "") for i, l in enumerate(ls)]
+
+def layouts_get():
+    b = ini_get("command", "binding_layout"); tg = "ctrl_space"
+    for k, v in TOGGLES.items():
+        if v[0] == b: tg = k
+    print(json.dumps({"layouts": [{"l": l, "v": v} for l, v in lv()], "toggle": tg}))
+
+def store(pairs):
+    ini_put("input", "xkb_layout", ",".join(l for l, v in pairs))
+    vs = ",".join(v for l, v in pairs)
+    ini_put("input", "xkb_variant", vs if vs.strip(",") else None)
+
+def layouts_set(ls, vs, tg):
+    la, va = ls.split(","), vs.split(",")
+    ok = all(re.fullmatch(r"[a-z0-9_]+", x) for x in la) and all(re.fullmatch(r"[A-Za-z0-9_-]*", x) for x in va)
+    if not ok or len(la) > 8 or tg not in TOGGLES: sys.exit(2)
+    store([(l, va[i] if i < len(va) else "") for i, l in enumerate(la)])
+    # old versions switched with xkb groups, now the shell switches by turning the list round
+    rest = [o for o in ini_get("input", "xkb_options").split(",") if o.strip() and not o.strip().startswith("grp:")]
+    ini_put("input", "xkb_options", ",".join(rest) if rest else None)
+    ini_put("command", "binding_layout", TOGGLES[tg][0])
+    ini_put("command", "command_layout", ROTATE)
+
+def rotate():
+    p = lv()
+    if len(p) > 1:
+        store(p[1:] + p[:1])
+        try:
+            import subprocess
+            subprocess.run(["/usr/local/bin/smof-activity", "set", "layout", "--title", "Keyboard: " + str(p[1][0]).upper(), "--sub", "Layout changed", "--icon", "preferences-desktop-keyboard", "--size", "tiny", "--ttl", "2"], timeout=2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception: pass
+
+a = sys.argv[1:]
+if a and a[0] == "get": print(json.dumps(get()))
+elif a and a[0] == "list": lst()
+elif a[:2] == ["layouts", "get"]: layouts_get()
+elif a[:2] == ["layouts", "rotate"]: rotate()
+elif len(a) >= 4 and a[:2] == ["layouts", "set"]: layouts_set(a[2], a[3], a[4] if len(a) > 4 and a[4] else "ctrl_space")
+elif len(a) == 5 and a[0] == "ini" and a[1] == "set": ini_put(a[2], a[3], a[4])
+elif len(a) == 3 and a[0] == "set" and a[1] in KEYS: ini_put("input", a[1], "true" if a[2] == "true" else "false")

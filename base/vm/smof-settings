@@ -1,0 +1,9 @@
+#!/bin/sh
+# smof-settings [PAGE] : opens Smof Settings, or switches the open one to PAGE
+cfg=/usr/share/smof/apps/settings/shell.qml
+if pgrep -u "$(id -u)" -f "quickshell -p $cfg" >/dev/null 2>&1; then
+  [ -n "$1" ] && quickshell ipc -p "$cfg" call settings page "$1" >/dev/null 2>&1
+  exit 0
+fi
+export LANG=C.UTF-8
+SMOF_PAGE="$1" exec quickshell -p "$cfg" >/dev/null 2>&1

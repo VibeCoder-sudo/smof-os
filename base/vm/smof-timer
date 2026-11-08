@@ -1,0 +1,21 @@
+#!/bin/sh
+# smof-timer 90s|5m|1h [NAME] : a countdown shown in the pill, with a sound at the end
+spec=${1:-5m}; name=${2:-Timer}
+case "$spec" in
+  *h) secs=$(( ${spec%h} * 3600 )) ;;
+  *m) secs=$(( ${spec%m} * 60 )) ;;
+  *s) secs=${spec%s} ;;
+  *[!0-9]*|"") echo "usage: smof-timer 90s|5m|1h [NAME]" >&2; exit 2 ;;
+  *) secs=$spec ;;
+esac
+id="timer-$$"; left=$secs
+while [ "$left" -gt 0 ]; do
+  m=$(( left / 60 )); s=$(( left % 60 ))
+  pct=$(( (secs - left) * 100 / secs ))
+  /usr/local/bin/smof-activity set "$id" --title "$name" --sub "$(printf '%d:%02d left' "$m" "$s")" --icon alarm-clock --progress "$pct" --pid $$ --ttl 0
+  sleep 1; left=$(( left - 1 ))
+done
+/usr/local/bin/smof-activity end "$id" --note "Time is up"
+/usr/local/bin/smof-activity set "$id-done" --title "$name" --sub "Time is up" --icon alarm-clock --size medium --important --ttl 8
+/usr/local/bin/smof-sound success
+notify-send -a Timer "$name" "Time is up" 2>/dev/null

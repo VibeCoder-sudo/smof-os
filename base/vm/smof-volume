@@ -1,0 +1,14 @@
+#!/bin/sh
+# smof-volume up|down|mute|STEP : changes the volume and tells the pill about it
+# the pill shows the level for a moment, in the tiny size
+case "$1" in
+  up)   wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+  down) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+  mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+esac
+out=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null) || exit 0
+vol=$(echo "$out" | awk '{printf "%d", $2 * 100 + 0.5}')
+muted=no; case "$out" in *MUTED*) muted=yes;; esac
+if [ "$muted" = yes ]; then title="Muted"; icon=multimedia-volume-control; else title="Volume $vol%"; icon=multimedia-volume-control; fi
+/usr/local/bin/smof-activity set volume --title "$title" --sub "Sound output" --icon "$icon" --progress "$vol" --size tiny --ttl 2
+[ "$muted" = no ] && /usr/local/bin/smof-sound notify "$vol" >/dev/null 2>&1 &

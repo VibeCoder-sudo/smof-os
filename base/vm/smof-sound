@@ -1,0 +1,18 @@
+#!/bin/sh
+# smof-sound NAME [VOLUME 0-100] : plays /usr/share/smof/sounds/NAME.wav through PipeWire.
+# Stays quiet when sounds are off in Settings, and takes the volume from Settings when none is given. Gives up without a sound server.
+f="/usr/share/smof/sounds/$1.wav"
+[ -f "$f" ] || exit 0
+L=/var/lib/smof/look.json
+if [ -f "$L" ]; then
+  grep -q '"sounds": *false' "$L" 2>/dev/null && exit 0
+  if [ -z "$2" ]; then
+    v=$(sed -n 's/.*"soundVol": *\([0-9.]*\).*/\1/p' "$L" | head -1)
+    [ -n "$v" ] && v=$(awk -v x="$v" 'BEGIN { printf "%d", x * 100 }')
+  fi
+fi
+v=${2:-${v:-80}}
+case "$v" in (*[!0-9]*|"") v=80;; esac
+# short latency, and the files carry a little silence before and after: the sound card needs a moment to wake and a moment to finish,
+# without it the end of a short sound was cut off when paplay exited
+exec paplay --latency-msec=20 --volume=$((v * 655)) "$f" 2>/dev/null
