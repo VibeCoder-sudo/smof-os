@@ -41,8 +41,22 @@ Item {
         stdinEnabled: true
         command: ["sudo", "-n", "/usr/local/sbin/smof-oobe"]
         onStarted: write(payload)
-        onExited: (code) => { oobeUi.busy = false; if (code === 0) oobeUi.ok = true; else { oobeUi.goto(4); oobeUi.hint = "" } }
+        // what sudo or the helper printed, shown on screen when the setup fails so the cause is visible without any console
+        stderr: StdioCollector { id: oobeErr }
+        stdout: StdioCollector { id: oobeOut }
+        onExited: (code) => {
+            oobeUi.busy = false
+            if (code === 0) oobeUi.ok = true
+            else {
+                var t = (oobeErr.text + " " + oobeOut.text).trim().split("\n").slice(-2).join(" ")
+                oobeUi.errText = "code " + code + (t !== "" ? ", " + t : "")
+                oobeLog.reload(); oobeUi.goto(4); oobeUi.hint = ""
+            }
+        }
     }
+    // the helper keeps its own log, the last lines are added to the message
+    FileView { id: oobeLog; path: "/var/lib/smof/oobe.log"; printErrors: false
+        onLoaded: { var l = text().trim().split("\n"); if (oobeUi.errText !== "") oobeUi.errText += " | " + l.slice(-2).join(" ") } }
     Timer { id: previewT; interval: 2500; onTriggered: oobeUi.ok = true }
     function runSetup(name, user, pin, dark, layouts) {
         if (oobeState === "preview") { previewT.start(); return }

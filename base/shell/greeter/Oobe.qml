@@ -16,6 +16,7 @@ FocusScope {
     property string pin2: ""
     property bool confirming: false
     property string hint: ""
+    property string errText: ""            // what the root helper said when it failed, shown on the keyboard step
     property bool origDark: Theme.dark
     readonly property string pinNow: confirming ? pin2 : pin1
     readonly property string userName: {
@@ -172,7 +173,9 @@ FocusScope {
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 80; text: "Your keyboard"; font.pixelSize: 38; w: 560 }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 134; text: "Add every language you type in, you can change it later in Settings"; font.pixelSize: 20; color: Theme.i62 }
             LayoutPicker { id: kb; x: (parent.width - width) / 2; y: 185; width: 640; listHeight: 110 }
-            Pill { anchors.horizontalCenter: parent.horizontalCenter; y: 505; label: "Finish"; onClicked: o.finish() }
+            T { visible: o.errText !== ""; anchors.horizontalCenter: parent.horizontalCenter; y: 464; width: 640; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
+                text: "Setup did not finish: " + o.errText; font.pixelSize: 14; color: Theme.errfg }
+            Pill { anchors.horizontalCenter: parent.horizontalCenter; y: 505; label: "Finish"; onClicked: { o.errText = ""; o.finish() } }
         }
 
         // 4 working and 5 done
