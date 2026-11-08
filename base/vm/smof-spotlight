@@ -110,27 +110,41 @@ def read_files(prev):
                 if len(items) > 20000: return items
     return items
 
-def build_index(emb):
+def load_cache():
     import numpy as np
-    os.makedirs(CACHE, exist_ok=True)
     old = {}
     try:
         meta = json.load(open(IDX_JSON)); vec = np.load(IDX_NPY)
         for m, v in zip(meta, vec): old[(m["kind"], m["id"], m.get("mtime", 0))] = v
     except Exception: pass
+    return old
+
+def save_cache(items, vecs):
+    import numpy as np
+    os.makedirs(CACHE, exist_ok=True)
+    json.dump(items, open(IDX_JSON + ".tmp", "w"), ensure_ascii=False); os.replace(IDX_JSON + ".tmp", IDX_JSON)
+    np.save(IDX_NPY + ".tmp.npy", np.stack(vecs).astype(np.float32) if items else np.zeros((0, 384), dtype=np.float32)); os.replace(IDX_NPY + ".tmp.npy", IDX_NPY)
+
+# the index is built in the background in small batches, a query is answered from whatever is ready, so typing never waits for it
+STATE = {"items": [], "vecs": None}
+MAX_NEW = 3000          # new or changed files embedded in one pass, the rest follows on the next pass
+def refresh(emb, quick_first=True):
+    import numpy as np
+    old = load_cache()
     items = read_apps() + read_extras() + read_files(old)
-    vecs, todo = [None] * len(items), []
-    for i, it in enumerate(items):
-        k = (it["kind"], it["id"], it.get("mtime", 0))
-        if k in old: vecs[i] = old[k]
-        else: todo.append(i)
-    if emb and todo:
-        E = emb.embed([items[i]["text"] for i in todo])
-        for j, i in enumerate(todo): vecs[i] = E[j]
-    elif not emb: vecs = [np.zeros(384, dtype=np.float32) for _ in items]
-    json.dump(items, open(IDX_JSON, "w"), ensure_ascii=False)
-    np.save(IDX_NPY, np.stack(vecs).astype(np.float32) if items else np.zeros((0, 384), dtype=np.float32))
-    return items, np.load(IDX_NPY)
+    vecs = [old.get((it["kind"], it["id"], it.get("mtime", 0))) for it in items]
+    zero = np.zeros(384, dtype=np.float32)
+    todo = [i for i, v in enumerate(vecs) if v is None]
+    todo.sort(key=lambda i: (items[i]["kind"] == "file", -items[i].get("mtime", 0)))        # apps and settings first, then the newest files
+    STATE["items"], STATE["vecs"] = items, np.stack([v if v is not None else zero for v in vecs])
+    if not emb: return
+    for n in range(0, min(len(todo), MAX_NEW), 32):
+        idx = todo[n:n + 32]
+        E = emb.embed([items[i]["text"] for i in idx])
+        for j, i in enumerate(idx): vecs[i] = E[j]
+        STATE["vecs"] = np.stack([v if v is not None else zero for v in vecs])
+        if (n // 32) % 20 == 19: save_cache(items, [v if v is not None else zero for v in vecs])
+    save_cache(items, [v if v is not None else zero for v in vecs])
 
 def clip_hits(q):
     try: o = subprocess.run(["cliphist", "list"], capture_output=True, text=True, timeout=3).stdout
@@ -175,19 +189,21 @@ def load_emb():
         sys.stderr.write("no model: %s\n" % e); return None
 
 def main():
+    import threading
     cmd = sys.argv[1] if len(sys.argv) > 1 else "serve"
     emb = load_emb()
     if cmd == "index":
-        items, _ = build_index(emb); print(len(items), "items", "with meaning" if emb else "words only"); return
-    import numpy as np
-    try: items = json.load(open(IDX_JSON)); vecs = np.load(IDX_NPY)
-    except Exception: items, vecs = build_index(emb)
-    last = time.time()
+        refresh(emb); print(len(STATE["items"]), "items", "with meaning" if emb else "words only"); return
+    def loop():
+        while True:
+            try: refresh(emb)
+            except Exception as e: sys.stderr.write("index: %s\n" % e)
+            time.sleep(600)
+    threading.Thread(target=loop, daemon=True).start()
     for line in sys.stdin:
         try: q = json.loads(line)["q"]
         except Exception: continue
-        if time.time() - last > 600: items, vecs = build_index(emb); last = time.time()
         ans = calc(q) or convert(q)
-        hits = [] if ans else search(q, items, vecs, emb) + clip_hits(q)
+        hits = [] if ans else search(q, STATE["items"], STATE["vecs"], emb) + clip_hits(q)
         print(json.dumps({"q": q, "answer": ans or "", "hits": hits}, ensure_ascii=False)); sys.stdout.flush()
 main()

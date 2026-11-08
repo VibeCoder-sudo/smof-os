@@ -29,6 +29,7 @@ FloatingWindow {
         { id: "bluetooth", name: "Bluetooth", icon: "phone" },
         { id: "night", name: "Night Light", icon: "moon" },
         { id: "travel", name: "Time Travel", icon: "calendar" },
+        { id: "updates", name: "Software Update", icon: "cloudsun" },
         { id: "account", name: "Account", icon: "phone" },
         { id: "about", name: "About", icon: "notes" }
     ]
@@ -124,6 +125,30 @@ FloatingWindow {
     Timer { interval: 8000; repeat: true; running: win.visible && win.page === "network"; onTriggered: win.wScan() }
 
 
+
+    // Software Update: checkupdates needs no password, the update itself asks through the permission popup
+    property var upList: []
+    property string upMsg: "Not checked yet"
+    property string upLine: ""
+    property bool upBusy: false
+    property bool upChecking: false
+    Process {
+        id: upCheck
+        command: ["sh", "-c", "checkupdates 2>/dev/null; true"]
+        stdout: StdioCollector { onStreamFinished: {
+            var l = text.split("\n").filter(function (x) { return x.trim() !== "" }).map(function (x) { var m = x.match(/^(\S+) (\S+) -> (\S+)/); return m ? { name: m[1], from: m[2], to: m[3] } : null }).filter(function (x) { return x })
+            win.upList = l; win.upChecking = false
+            win.upMsg = l.length === 0 ? "Smof is up to date" : l.length + (l.length === 1 ? " update is" : " updates are") + " ready" } }
+    }
+    Process {
+        id: upRun
+        command: ["/usr/local/bin/smof-pkg", "run", "pacman", "update"]
+        stdout: SplitParser { onRead: (line) => { try { var o = JSON.parse(line)
+            if (o.line) win.upLine = o.line
+            if (o.done) { win.upBusy = false; win.upMsg = o.ok ? "Updated. Some changes show after you sign in again" : "The update did not finish"; win.upLine = ""; upCheck.running = true } } catch (e) {} } }
+    }
+    function upDoCheck() { win.upChecking = true; win.upMsg = "Checking"; upCheck.running = true }
+
     // ---- one helper for the small command line tools that answer with JSON ----
     component Cmd: Process {
         id: cm
@@ -157,7 +182,7 @@ FloatingWindow {
     Cmd { id: snFiles; property var args: []; command: ["/usr/local/bin/smof-snap", "files"].concat(args); onJson: (o) => win.snapFiles = o }
     Cmd { id: snRestore; property var args: []; command: ["/usr/local/bin/smof-snap", "restore"].concat(args); onJson: (o) => win.snapMsg = o.ok ? "Restored. The old version is kept next to it as .before-restore" : (o.error || "Failed") }
     function snapOpen(id, sub) { win.snapSel = id; win.snapSub = sub; snFiles.args = [id, sub]; snFiles.running = true }
-    onPageChanged: { if (page === "network") wScan(); if (page === "bluetooth") btStatus.running = true; if (page === "night") nlGet.running = true; if (page === "travel") snList.running = true }
+    onPageChanged: { if (page === "network") wScan(); if (page === "bluetooth") btStatus.running = true; if (page === "night") nlGet.running = true; if (page === "travel") snList.running = true; if (page === "updates" && win.upList.length === 0 && !win.upBusy) win.upDoCheck() }
 
     FileView { id: uj; path: "/var/lib/smof/user.json"; blockLoading: true; printErrors: false }
     readonly property var user: { try { return JSON.parse(uj.text()) } catch (e) { return { name: Quickshell.env("USER"), user: Quickshell.env("USER") } } }
@@ -775,6 +800,33 @@ FloatingWindow {
                     }
                 }
                 T { visible: win.snapSel !== "" && win.snapMsg !== ""; width: parent.width; text: win.snapMsg; color: Theme.i55; font.pixelSize: 14; wrapMode: Text.WordWrap }
+            }
+
+            // Software Update
+            Column {
+                visible: win.page === "updates"
+                width: parent.width; spacing: 18
+                Card {
+                    Row2 { label: win.upMsg; sub: win.upBusy ? win.upLine : "Smof and the system packages come from the Smof repository"; last: true
+                        Row { spacing: 8
+                            Btn { visible: !win.upBusy; label: win.upChecking ? "Checking" : "Check"; onClicked: win.upDoCheck() }
+                            Btn { visible: !win.upBusy && win.upList.length > 0; label: "Update all"; onClicked: { win.upBusy = true; win.upMsg = "Updating"; win.upLine = "Starting"; upRun.running = true } } }
+                    }
+                }
+                Card {
+                    visible: win.upList.length > 0
+                    Repeater {
+                        model: win.upList
+                        delegate: Row2 {
+                            id: ur
+                            required property var modelData
+                            required property int index
+                            label: modelData.name
+                            sub: modelData.from + " to " + modelData.to
+                            last: index === win.upList.length - 1
+                        }
+                    }
+                }
             }
 
             // Account

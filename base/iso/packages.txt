@@ -77,3 +77,4 @@ bluez
 bluez-utils
 wlsunset
 wf-recorder
+pacman-contrib
