@@ -1,0 +1,77 @@
+#!/usr/bin/python3 -I
+# smof-snap : Time Travel. Hard link snapshots of the home folder, cheap on disk, every file can be taken back.
+#   smof-snap create | list | files ID [SUBPATH] | restore ID PATH | prune
+# Snapshots live in $SMOF_SNAP_DIR (default ~/.local/share/smof-snaps, put it on another disk to make it a real backup).
+import os, sys, json, subprocess, time, shutil, datetime
+
+HOME = os.environ.get("HOME")
+DIR = os.environ.get("SMOF_SNAP_DIR", HOME + "/.local/share/smof-snaps")
+EXC = [".cache", ".local/share/smof-snaps", ".local/share/Trash", ".config/google-chrome", ".mozilla/firefox/*/cache2", "node_modules", "*.iso", ".var"]
+
+def ids(): return sorted(d for d in os.listdir(DIR) if len(d) == 15 and d[8] == "-") if os.path.isdir(DIR) else []
+def size(p):
+    try: return int(subprocess.run(["du", "-sk", p], capture_output=True, text=True).stdout.split()[0]) * 1024
+    except Exception: return 0
+
+def create():
+    os.makedirs(DIR, exist_ok=True)
+    prev = ids()
+    sid = time.strftime("%Y%m%d-%H%M%S"); tmp = os.path.join(DIR, ".tmp-" + sid)
+    cmd = ["rsync", "-a", "--delete", "--delete-excluded", "--numeric-ids"] + ["--exclude=" + e for e in EXC]
+    if prev: cmd.append("--link-dest=" + os.path.join(DIR, prev[-1]))
+    cmd += [HOME + "/", tmp + "/"]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode not in (0, 24):
+        shutil.rmtree(tmp, ignore_errors=True); print(json.dumps({"ok": False, "error": r.stderr.strip()[-300:]})); return 1
+    os.rename(tmp, os.path.join(DIR, sid)); print(json.dumps({"ok": True, "id": sid})); return 0
+
+def listing():
+    out = []
+    for i in ids():
+        t = datetime.datetime.strptime(i, "%Y%m%d-%H%M%S")
+        out.append({"id": i, "when": t.strftime("%d.%m.%Y %H:%M"), "ts": int(t.timestamp())})
+    print(json.dumps(list(reversed(out))))
+
+def files(sid, sub=""):
+    base = os.path.normpath(os.path.join(DIR, sid, sub))
+    if not base.startswith(os.path.join(DIR, sid)): print("[]"); return
+    r = []
+    try:
+        for n in sorted(os.listdir(base)):
+            p = os.path.join(base, n); r.append({"name": n, "dir": os.path.isdir(p), "size": os.path.getsize(p) if os.path.isfile(p) else 0})
+    except OSError: pass
+    print(json.dumps(r))
+
+def restore(sid, path):
+    # takes a file or folder back from a snapshot, keeps the current version next to it as NAME.before-restore
+    rel = os.path.relpath(os.path.abspath(path), HOME)
+    if rel.startswith(".."): print(json.dumps({"ok": False, "error": "outside home"})); return 1
+    src = os.path.join(DIR, sid, rel)
+    if not os.path.exists(src): print(json.dumps({"ok": False, "error": "not in this snapshot"})); return 1
+    dst = os.path.join(HOME, rel)
+    if os.path.exists(dst):
+        os.rename(dst, dst + ".before-restore")
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    if os.path.isdir(src): shutil.copytree(src, dst, symlinks=True)
+    else: shutil.copy2(src, dst)
+    print(json.dumps({"ok": True, "path": dst})); return 0
+
+def prune():
+    # keep every snapshot of the last day, one per day for two weeks, one per week after that up to 12 weeks
+    now = time.time(); keep = set(); seen = set()
+    for i in reversed(ids()):
+        t = datetime.datetime.strptime(i, "%Y%m%d-%H%M%S"); age = now - t.timestamp()
+        if age < 86400: keep.add(i); continue
+        key = t.strftime("%Y%m%d") if age < 14 * 86400 else ("w" + t.strftime("%G%V") if age < 84 * 86400 else None)
+        if key and key not in seen: seen.add(key); keep.add(i)
+    gone = [i for i in ids() if i not in keep]
+    for i in gone: shutil.rmtree(os.path.join(DIR, i), ignore_errors=True)
+    print(json.dumps({"ok": True, "removed": len(gone)}))
+
+a = sys.argv[1:] or ["list"]
+if a[0] == "create": sys.exit(create())
+elif a[0] == "list": listing()
+elif a[0] == "files" and len(a) > 1: files(a[1], a[2] if len(a) > 2 else "")
+elif a[0] == "restore" and len(a) > 2: sys.exit(restore(a[1], a[2]))
+elif a[0] == "prune": prune()
+else: print("usage: smof-snap create|list|files ID [SUB]|restore ID PATH|prune"); sys.exit(2)

@@ -1,0 +1,175 @@
+#!/usr/bin/python3 -I
+# smof-spotlight : search that understands meaning. Apps, files (names and text) and clipboard, plus a calculator and unit converter.
+#   smof-spotlight serve   reads one JSON per line on stdin: {"q": "text"}  writes one JSON per line: {"q": ..., "answer": ..., "hits": [...]}
+#   smof-spotlight index   builds or refreshes the index of the home folder
+# The meaning search uses multilingual-e5-small run with numpy only (smof_embed.py), no GPU and no network. Without the model it falls back to words.
+import sys, os, json, re, ast, operator, math, time, subprocess, glob
+sys.path.insert(0, os.environ.get("SMOF_LIB", "/usr/local/lib/smof"))
+HOME = os.path.expanduser("~")
+CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME", HOME + "/.cache"), "smof")
+IDX_JSON, IDX_NPY = CACHE + "/spot.json", CACHE + "/spot.npy"
+ROOTS = ["Documents", "Desktop", "Downloads", "Pictures", "Music", "Videos"]
+TEXT_EXT = (".txt", ".md", ".py", ".js", ".ts", ".html", ".css", ".json", ".csv", ".tex", ".rst", ".conf", ".ini", ".sh", ".c", ".cpp", ".h", ".rs", ".go", ".java", ".qml", ".yml", ".yaml", ".toml", ".log")
+
+# ---------- calculator and units ----------
+OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv, ast.Pow: operator.pow, ast.Mod: operator.mod, ast.USub: operator.neg, ast.UAdd: operator.pos, ast.FloorDiv: operator.floordiv}
+FN = {"sqrt": math.sqrt, "sin": math.sin, "cos": math.cos, "tan": math.tan, "log": math.log10, "ln": math.log, "abs": abs, "round": round, "floor": math.floor, "ceil": math.ceil}
+CONST = {"pi": math.pi, "e": math.e}
+def _ev(n):
+    if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)): return n.value
+    if isinstance(n, ast.BinOp) and type(n.op) in OPS:
+        a, b = _ev(n.left), _ev(n.right)
+        if isinstance(n.op, ast.Pow) and abs(b) > 1000: raise ValueError("big")
+        return OPS[type(n.op)](a, b)
+    if isinstance(n, ast.UnaryOp) and type(n.op) in OPS: return OPS[type(n.op)](_ev(n.operand))
+    if isinstance(n, ast.Name) and n.id in CONST: return CONST[n.id]
+    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in FN and len(n.args) == 1: return FN[n.func.id](_ev(n.args[0]))
+    raise ValueError("no")
+def calc(q):
+    s = q.strip().rstrip("=").replace(",", ".").replace("^", "**").replace("×", "*").replace("÷", "/")
+    s = re.sub(r"(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)", r"(\1/100*\2)", s)
+    if not re.search(r"[\d]", s) or not re.fullmatch(r"[0-9a-z_+\-*/().%\s]+", s): return None
+    if re.fullmatch(r"[\d\s.]+", s): return None
+    try:
+        v = _ev(ast.parse(s, mode="eval").body)
+    except Exception: return None
+    if isinstance(v, float): v = round(v, 10); v = int(v) if v == int(v) and abs(v) < 1e15 else v
+    return str(v)
+LEN = {"mm": .001, "cm": .01, "m": 1, "km": 1000, "in": .0254, "ft": .3048, "yd": .9144, "mi": 1609.344}
+MASS = {"mg": 1e-6, "g": .001, "kg": 1, "t": 1000, "oz": .028349523, "lb": .45359237}
+VOL = {"ml": .001, "l": 1, "gal": 3.785411784, "cup": .2365882365}
+TIME = {"s": 1, "min": 60, "h": 3600, "d": 86400, "w": 604800}
+DATA = {"b": 1, "kb": 1e3, "mb": 1e6, "gb": 1e9, "tb": 1e12, "kib": 1024, "mib": 1024**2, "gib": 1024**3}
+def convert(q):
+    m = re.fullmatch(r"\s*(-?\d+(?:[.,]\d+)?)\s*([a-zA-Z°]+)\s*(?:to|in|в|->|=>)\s*([a-zA-Z°]+)\s*", q)
+    if not m: return None
+    v = float(m.group(1).replace(",", ".")); a, b = m.group(2).lower(), m.group(3).lower()
+    temp = {"c": lambda x: x, "°c": lambda x: x, "f": lambda x: (x - 32) * 5 / 9, "°f": lambda x: (x - 32) * 5 / 9, "k": lambda x: x - 273.15}
+    back = {"c": lambda x: x, "°c": lambda x: x, "f": lambda x: x * 9 / 5 + 32, "°f": lambda x: x * 9 / 5 + 32, "k": lambda x: x + 273.15}
+    if a in temp and b in back:
+        r = back[b](temp[a](v))
+    else:
+        for t in (LEN, MASS, VOL, TIME, DATA):
+            if a in t and b in t: r = v * t[a] / t[b]; break
+        else: return None
+    r = round(r, 6); r = int(r) if r == int(r) else r
+    return "%s %s" % (r, m.group(3))
+
+# ---------- apps ----------
+def read_apps():
+    out = []
+    for d in ("/usr/share/applications", HOME + "/.local/share/applications"):
+        for f in glob.glob(d + "/*.desktop"):
+            try:
+                t = {}; sect = False
+                for l in open(f, encoding="utf-8", errors="ignore"):
+                    l = l.strip()
+                    if l.startswith("["): sect = (l == "[Desktop Entry]"); continue
+                    if sect and "=" in l:
+                        k, v = l.split("=", 1)
+                        if k in ("Name", "GenericName", "Comment", "Keywords", "NoDisplay", "Icon", "Type") and k not in t: t[k] = v
+                if t.get("NoDisplay") == "true" or t.get("Type", "Application") != "Application" or not t.get("Name"): continue
+                out.append({"kind": "app", "id": os.path.basename(f)[:-8], "name": t["Name"], "icon": t.get("Icon", ""), "text": " ".join(t.get(k, "") for k in ("Name", "GenericName", "Comment", "Keywords"))})
+            except OSError: pass
+    return out
+
+# ---------- files ----------
+def read_files(prev):
+    items = []
+    for r in ROOTS:
+        base = os.path.join(HOME, r)
+        for dp, dn, fn in os.walk(base):
+            dn[:] = [d for d in dn if not d.startswith(".") and d not in ("node_modules", "__pycache__")]
+            for n in fn:
+                if n.startswith("."): continue
+                p = os.path.join(dp, n)
+                try: st = os.stat(p)
+                except OSError: continue
+                body = ""
+                if n.lower().endswith(TEXT_EXT) and st.st_size < 400000:
+                    try: body = open(p, encoding="utf-8", errors="ignore").read(1500)
+                    except OSError: pass
+                items.append({"kind": "file", "id": p, "name": n, "mtime": int(st.st_mtime), "text": re.sub(r"\s+", " ", (os.path.splitext(n)[0].replace("_", " ").replace("-", " ") + ". " + body)).strip()[:1200]})
+                if len(items) > 20000: return items
+    return items
+
+def build_index(emb):
+    import numpy as np
+    os.makedirs(CACHE, exist_ok=True)
+    old = {}
+    try:
+        meta = json.load(open(IDX_JSON)); vec = np.load(IDX_NPY)
+        for m, v in zip(meta, vec): old[(m["kind"], m["id"], m.get("mtime", 0))] = v
+    except Exception: pass
+    items = read_apps() + read_files(old)
+    vecs, todo = [None] * len(items), []
+    for i, it in enumerate(items):
+        k = (it["kind"], it["id"], it.get("mtime", 0))
+        if k in old: vecs[i] = old[k]
+        else: todo.append(i)
+    if emb and todo:
+        E = emb.embed([items[i]["text"] for i in todo])
+        for j, i in enumerate(todo): vecs[i] = E[j]
+    elif not emb: vecs = [np.zeros(384, dtype=np.float32) for _ in items]
+    json.dump(items, open(IDX_JSON, "w"), ensure_ascii=False)
+    np.save(IDX_NPY, np.stack(vecs).astype(np.float32) if items else np.zeros((0, 384), dtype=np.float32))
+    return items, np.load(IDX_NPY)
+
+def clip_hits(q):
+    try: o = subprocess.run(["cliphist", "list"], capture_output=True, text=True, timeout=3).stdout
+    except Exception: return []
+    ql = q.lower(); r = []
+    if ql in ("clip", "clipboard", "буфер", "буфер обмена", "paste"):      # the word itself lists the latest copies
+        for l in o.splitlines()[:8]:
+            i, _, t = l.partition("\t")
+            if t and not t.startswith("[[ binary"): r.append({"kind": "clip", "id": i, "name": t[:120], "score": 1.0})
+        return r
+    for l in o.splitlines():
+        i, _, t = l.partition("\t")
+        if t and ql in t.lower() and not t.startswith("[[ binary"): r.append({"kind": "clip", "id": i, "name": t[:120], "score": 0.5})
+        if len(r) >= 4: break
+    return r
+
+def search(q, items, vecs, emb):
+    import numpy as np
+    ql = q.lower().strip(); words = [w for w in re.split(r"\W+", ql) if w]
+    sem = None
+    if emb is not None and len(items) and len(ql) >= 2:
+        qv = emb.embed([q], prefix="query: ")[0]; sem = vecs @ qv
+    res = []
+    for i, it in enumerate(items):
+        nl = it["name"].lower(); sc = 0.0
+        if ql and nl == ql: sc += 3
+        elif ql and nl.startswith(ql): sc += 2
+        elif ql and ql in nl: sc += 1.2
+        elif words and all(w in it["text"].lower() for w in words): sc += 0.8
+        if sem is not None: sc += max(0.0, float(sem[i]) - 0.80) * 5       # e5 scores sit high, only the top part means something
+        if it["kind"] == "app": sc += 0.15
+        if sc > 0.3: res.append((sc, it))
+    res.sort(key=lambda x: -x[0])
+    return [{"kind": it["kind"], "id": it["id"], "name": it["name"], "icon": it.get("icon", ""), "score": round(sc, 3)} for sc, it in res[:12]]
+
+def load_emb():
+    try:
+        from smof_embed import Embedder
+        return Embedder()
+    except Exception as e:
+        sys.stderr.write("no model: %s\n" % e); return None
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "serve"
+    emb = load_emb()
+    if cmd == "index":
+        items, _ = build_index(emb); print(len(items), "items", "with meaning" if emb else "words only"); return
+    import numpy as np
+    try: items = json.load(open(IDX_JSON)); vecs = np.load(IDX_NPY)
+    except Exception: items, vecs = build_index(emb)
+    last = time.time()
+    for line in sys.stdin:
+        try: q = json.loads(line)["q"]
+        except Exception: continue
+        if time.time() - last > 600: items, vecs = build_index(emb); last = time.time()
+        ans = calc(q) or convert(q)
+        hits = [] if ans else search(q, items, vecs, emb) + clip_hits(q)
+        print(json.dumps({"q": q, "answer": ans or "", "hits": hits}, ensure_ascii=False)); sys.stdout.flush()
+main()

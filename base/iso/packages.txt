@@ -72,3 +72,7 @@ dosfstools
 e2fsprogs
 arch-install-scripts
 mkinitcpio
+python-sentencepiece
+bluez
+bluez-utils
+wlsunset

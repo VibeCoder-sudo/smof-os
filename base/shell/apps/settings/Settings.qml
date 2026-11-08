@@ -26,6 +26,9 @@ FloatingWindow {
         { id: "keyboard", name: "Keyboard", icon: "notes" },
         { id: "notifications", name: "Notifications", icon: "calendar" },
         { id: "network", name: "Network", icon: "sliders" },
+        { id: "bluetooth", name: "Bluetooth", icon: "phone" },
+        { id: "night", name: "Night Light", icon: "moon" },
+        { id: "travel", name: "Time Travel", icon: "calendar" },
         { id: "account", name: "Account", icon: "phone" },
         { id: "about", name: "About", icon: "notes" }
     ]
@@ -84,6 +87,77 @@ FloatingWindow {
     }
     onVisibleChanged: { if (!visible) Qt.quit(); else { infoP.running = true; netP.running = true; picP.running = true; dispP.running = true } }
     Timer { interval: 4000; repeat: true; running: win.visible && win.page === "network"; onTriggered: netP.running = true }
+
+
+    // ---- Wi-Fi through smof-wifi (NetworkManager) ----
+    property bool wRadio: true
+    property bool wOk: true
+    property string wErr: ""
+    property string wSsid: ""
+    property string wBusy: ""
+    property string wAsk: ""
+    property var wNets: []
+    function wScan() { if (!wP.running) wP.running = true }
+    Process {
+        id: wP
+        command: ["/usr/local/bin/smof-wifi", "scan"]
+        stdout: StdioCollector { onStreamFinished: { try { var o = JSON.parse(text); win.wOk = o.ok; win.wErr = o.error || ""; win.wRadio = o.radio; win.wNets = o.nets || []
+            for (var i = 0; i < win.wNets.length; i++) if (win.wNets[i].active) win.wSsid = win.wNets[i].ssid } catch (e) {} } }
+    }
+    Process {
+        id: wA
+        property string pw: ""
+        property string ssid: ""
+        property string verb: "connect"
+        command: ["/usr/local/bin/smof-wifi", verb, ssid]
+        stdinEnabled: true
+        onStarted: { write(pw + "\n"); stdinEnabled = false }
+        stdout: StdioCollector { onStreamFinished: { try { var o = JSON.parse(text); win.wBusy = ""; win.wErr = o.ok ? "" : (o.error || "Could not connect"); if (o.ok) win.wAsk = ""; } catch (e) { win.wBusy = "" } win.wScan() } }
+    }
+    function wDo(verb, ssid, pw) { win.wBusy = ssid; wA.verb = verb; wA.ssid = ssid; wA.pw = pw || ""; wA.stdinEnabled = true; wA.running = true }
+    Process {
+        id: wR
+        property string st: "on"
+        command: ["/usr/local/bin/smof-wifi", "radio", st]
+        onExited: win.wScan()
+    }
+    Timer { interval: 8000; repeat: true; running: win.visible && win.page === "network"; onTriggered: win.wScan() }
+
+
+    // ---- one helper for the small command line tools that answer with JSON ----
+    component Cmd: Process {
+        id: cm
+        property var onJson: null
+        stdout: StdioCollector { onStreamFinished: { try { if (cm.onJson) cm.onJson(JSON.parse(text)) } catch (e) {} } }
+    }
+    // Bluetooth
+    property bool btOk: true
+    property bool btPower: false
+    property string btErr: ""
+    property string btBusy: ""
+    property var btDevs: []
+    Cmd { id: btStatus; command: ["/usr/local/bin/smof-bt", "status"]; onJson: (o) => { win.btOk = o.ok; win.btErr = o.error || ""; win.btPower = o.power; win.btDevs = o.devices || [] } }
+    Cmd { id: btScan; command: ["/usr/local/bin/smof-bt", "scan"]; onJson: (o) => { win.btBusy = ""; win.btOk = o.ok; win.btPower = o.power; win.btDevs = o.devices || [] } }
+    Cmd { id: btAct; property var args: []; command: ["/usr/local/bin/smof-bt"].concat(args); onJson: (o) => { win.btBusy = ""; win.btErr = o.ok ? "" : (o.error || "Failed"); btStatus.running = true } }
+    function btDo(args, busy) { win.btBusy = busy || "x"; btAct.args = args; btAct.running = true }
+    // Night Light
+    property var nl: ({ on: false, temp: 3600, from: "21:00", to: "07:00" })
+    Cmd { id: nlGet; command: ["/usr/local/bin/smof-night", "status"]; onJson: (o) => win.nl = o }
+    Cmd { id: nlSet; property var args: []; command: ["/usr/local/bin/smof-night", "set"].concat(args); onJson: (o) => win.nl = o }
+    function nlDo(args) { nlSet.args = args; nlSet.running = true }
+    // Time Travel
+    property var snaps: []
+    property string snapMsg: ""
+    property bool snapBusy: false
+    property string snapSel: ""
+    property var snapFiles: []
+    property string snapSub: ""
+    Cmd { id: snList; command: ["/usr/local/bin/smof-snap", "list"]; onJson: (o) => win.snaps = o }
+    Cmd { id: snMake; command: ["/usr/local/bin/smof-snap", "create"]; onJson: (o) => { win.snapBusy = false; win.snapMsg = o.ok ? "Snapshot saved" : (o.error || "Failed"); snList.running = true } }
+    Cmd { id: snFiles; property var args: []; command: ["/usr/local/bin/smof-snap", "files"].concat(args); onJson: (o) => win.snapFiles = o }
+    Cmd { id: snRestore; property var args: []; command: ["/usr/local/bin/smof-snap", "restore"].concat(args); onJson: (o) => win.snapMsg = o.ok ? "Restored. The old version is kept next to it as .before-restore" : (o.error || "Failed") }
+    function snapOpen(id, sub) { win.snapSel = id; win.snapSub = sub; snFiles.args = [id, sub]; snFiles.running = true }
+    onPageChanged: { if (page === "network") wScan(); if (page === "bluetooth") btStatus.running = true; if (page === "night") nlGet.running = true; if (page === "travel") snList.running = true }
 
     FileView { id: uj; path: "/var/lib/smof/user.json"; blockLoading: true; printErrors: false }
     readonly property var user: { try { return JSON.parse(uj.text()) } catch (e) { return { name: Quickshell.env("USER"), user: Quickshell.env("USER") } } }
@@ -313,7 +387,10 @@ FloatingWindow {
         width: win.width < 760 ? 190 : 230; height: parent.height
         color: Theme.sidebg
         Behavior on color { ColorAnimation { duration: 300 } }
-        Column {
+        Flickable {
+          anchors.fill: parent; contentHeight: sbcol.implicitHeight + 32; clip: true; boundsBehavior: Flickable.StopAtBounds
+          Column {
+            id: sbcol
             x: 12; y: 16; width: parent.width - 24; spacing: 4
             Repeater {
                 model: win.pages
@@ -328,6 +405,7 @@ FloatingWindow {
                     MouseArea { id: pma; anchors.fill: parent; hoverEnabled: true; onClicked: win.page = modelData.id }
                 }
             }
+          }
         }
     }
 
@@ -560,9 +638,143 @@ FloatingWindow {
                 visible: win.page === "network"
                 width: parent.width; spacing: 18
                 Card {
+                    Row2 { label: "Wi-Fi"; sub: win.wOk ? (win.wSsid !== "" ? "Connected to " + win.wSsid : (win.wRadio ? "Not connected" : "Off")) : win.wErr; last: true
+                        Switch { on: win.wRadio; onToggled: (v) => { wR.st = v ? "on" : "off"; wR.running = true; win.wRadio = v } } }
+                }
+                Card {
+                    visible: win.wRadio && win.wNets.length > 0
+                    Repeater {
+                        model: win.wNets
+                        delegate: Column {
+                            id: wn
+                            required property var modelData
+                            required property int index
+                            width: parent.width
+                            Row2 {
+                                label: wn.modelData.ssid
+                                sub: (wn.modelData.active ? "Connected, " : (wn.modelData.known ? "Saved, " : "")) + (wn.modelData.secure ? "Secured" : "Open") + ", signal " + wn.modelData.signal + "%"
+                                last: wn.index === win.wNets.length - 1 && win.wAsk !== wn.modelData.ssid
+                                Row { spacing: 8
+                                    Btn { visible: wn.modelData.known || wn.modelData.active; label: "Forget"; danger: true; onClicked: win.wDo("forget", wn.modelData.ssid) }
+                                    Btn { visible: wn.modelData.active; label: "Disconnect"; onClicked: win.wDo("disconnect", wn.modelData.ssid) }
+                                    Btn { visible: !wn.modelData.active
+                                        label: win.wBusy === wn.modelData.ssid ? "Connecting" : "Connect"
+                                        onClicked: { if (wn.modelData.secure && !wn.modelData.known) { win.wAsk = wn.modelData.ssid; pwIn.text = ""; pwIn.forceActiveFocus() } else win.wDo("connect", wn.modelData.ssid) } }
+                                }
+                            }
+                            Item {
+                                visible: win.wAsk === wn.modelData.ssid
+                                width: parent.width; height: visible ? 64 : 0
+                                Rectangle { x: 20; y: 8; width: parent.width - 150; height: 44; radius: 22; color: Theme.glass2
+                                    TextInput { id: pwIn; anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 18; verticalAlignment: TextInput.AlignVCenter
+                                        echoMode: TextInput.Password; font.family: "Google Sans Flex"; font.pixelSize: 16; color: Theme.ink; clip: true
+                                        onAccepted: if (text.length >= 8) win.wDo("connect", wn.modelData.ssid, text) }
+                                    T { visible: pwIn.text === ""; x: 18; anchors.verticalCenter: parent.verticalCenter; text: "Password"; color: Theme.i5; font.pixelSize: 16 } }
+                                Btn { x: parent.width - width - 20; y: 13; label: "Join"; onClicked: if (pwIn.text.length >= 8) win.wDo("connect", wn.modelData.ssid, pwIn.text) }
+                            }
+                        }
+                    }
+                }
+                T { visible: win.wOk && win.wErr !== ""; width: parent.width; text: win.wErr; color: Theme.errfg; font.pixelSize: 14; wrapMode: Text.WordWrap }
+                Card {
                     Row2 { label: "Connection"; Val { text: win.netState } }
                     Row2 { label: "Address"; last: true; Val { text: win.netIp !== "" ? win.netIp : "None" } }
                 }
+            }
+
+            // Bluetooth
+            Column {
+                visible: win.page === "bluetooth"
+                width: parent.width; spacing: 18
+                Card {
+                    Row2 { label: "Bluetooth"; sub: win.btOk ? (win.btPower ? "On" : "Off") : win.btErr; last: true
+                        Row { spacing: 10
+                            Btn { visible: win.btPower; label: win.btBusy === "scan" ? "Searching" : "Search"; onClicked: win.btDo(["scan"], "scan") }
+                            Switch { on: win.btPower; onToggled: (v) => { win.btPower = v; win.btDo(["power", v ? "on" : "off"]) } } }
+                    }
+                }
+                Card {
+                    visible: win.btPower && win.btDevs.length > 0
+                    Repeater {
+                        model: win.btDevs
+                        delegate: Row2 {
+                            id: bd
+                            required property var modelData
+                            required property int index
+                            label: modelData.name
+                            sub: modelData.connected ? "Connected" : (modelData.paired ? "Paired" : "Available")
+                            last: index === win.btDevs.length - 1
+                            Row { spacing: 8
+                                Btn { visible: bd.modelData.paired; label: "Forget"; danger: true; onClicked: win.btDo(["forget", bd.modelData.mac]) }
+                                Btn { label: bd.modelData.connected ? "Disconnect" : (win.btBusy === bd.modelData.mac ? "Connecting" : (bd.modelData.paired ? "Connect" : "Pair"))
+                                    onClicked: win.btDo([bd.modelData.connected ? "disconnect" : (bd.modelData.paired ? "connect" : "pair"), bd.modelData.mac], bd.modelData.mac) }
+                            }
+                        }
+                    }
+                }
+                T { visible: win.btErr !== "" && win.btOk; width: parent.width; text: win.btErr; color: Theme.errfg; font.pixelSize: 14; wrapMode: Text.WordWrap }
+            }
+
+            // Night Light
+            Column {
+                visible: win.page === "night"
+                width: parent.width; spacing: 18
+                Card {
+                    Row2 { label: "Night Light"; sub: "Warmer colours in the evening, easier on the eyes"
+                        Switch { on: win.nl.on; onToggled: (v) => win.nlDo([v ? "on" : "off"]) } }
+                    Row2 { label: "Warmth"; sub: win.nl.temp + " K"
+                        Sld { from: 2500; to: 6000; value: win.nl.temp; onMoved: (v) => { win.nl.temp = Math.round(v / 100) * 100 }
+                            MouseArea { anchors.fill: parent; propagateComposedEvents: true; onReleased: (m) => { win.nlDo(["temp", String(win.nl.temp)]); m.accepted = false } } } }
+                    Row2 { label: "From"; sub: "Starts at this time"
+                        Seg { options: ["19:00", "20:00", "21:00", "22:00"]; index: Math.max(0, ["19:00", "20:00", "21:00", "22:00"].indexOf(win.nl.from)); onPicked: (i) => win.nlDo(["from", ["19:00", "20:00", "21:00", "22:00"][i]]) } }
+                    Row2 { label: "Until"; sub: "Back to normal colours at"; last: true
+                        Seg { options: ["06:00", "07:00", "08:00", "09:00"]; index: Math.max(0, ["06:00", "07:00", "08:00", "09:00"].indexOf(win.nl.to)); onPicked: (i) => win.nlDo(["to", ["06:00", "07:00", "08:00", "09:00"][i]]) } }
+                }
+            }
+
+            // Time Travel
+            Column {
+                visible: win.page === "travel"
+                width: parent.width; spacing: 18
+                Card {
+                    Row2 { label: "Save a snapshot of your files"; sub: win.snapMsg !== "" ? win.snapMsg : "Snapshots take little space, unchanged files are shared"; last: true
+                        Btn { label: win.snapBusy ? "Saving" : "Save now"; onClicked: { win.snapBusy = true; win.snapMsg = ""; snMake.running = true } } }
+                }
+                Card {
+                    visible: win.snaps.length > 0 && win.snapSel === ""
+                    Repeater {
+                        model: win.snaps
+                        delegate: Row2 {
+                            id: sr
+                            required property var modelData
+                            required property int index
+                            label: modelData.when
+                            last: index === win.snaps.length - 1
+                            Btn { label: "Browse"; onClicked: win.snapOpen(sr.modelData.id, "") }
+                        }
+                    }
+                }
+                Card {
+                    visible: win.snapSel !== ""
+                    Row2 { label: win.snapSub === "" ? "Home folder" : win.snapSub; sub: "Choose a file or folder to take back"
+                        Row { spacing: 8
+                            Btn { visible: win.snapSub !== ""; label: "Up"; onClicked: { var p = win.snapSub.split("/"); p.pop(); win.snapOpen(win.snapSel, p.join("/")) } }
+                            Btn { label: "Close"; onClicked: win.snapSel = "" } } }
+                    Repeater {
+                        model: win.snapFiles
+                        delegate: Row2 {
+                            id: sf
+                            required property var modelData
+                            required property int index
+                            label: (modelData.dir ? "[folder] " : "") + modelData.name
+                            last: index === win.snapFiles.length - 1
+                            Row { spacing: 8
+                                Btn { visible: sf.modelData.dir; label: "Open"; onClicked: win.snapOpen(win.snapSel, (win.snapSub === "" ? "" : win.snapSub + "/") + sf.modelData.name) }
+                                Btn { label: "Take back"; onClicked: { snRestore.args = [win.snapSel, win.homeDir + "/" + (win.snapSub === "" ? "" : win.snapSub + "/") + sf.modelData.name]; snRestore.running = true } } }
+                        }
+                    }
+                }
+                T { visible: win.snapSel !== "" && win.snapMsg !== ""; width: parent.width; text: win.snapMsg; color: Theme.i55; font.pixelSize: 14; wrapMode: Text.WordWrap }
             }
 
             // Account

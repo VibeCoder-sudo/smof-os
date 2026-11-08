@@ -1,0 +1,37 @@
+#!/usr/bin/python3 -I
+# smof-night : Night Light. Warms the screen colours in the evening with wlsunset.
+#   smof-night status | apply | set on|off | set temp KELVIN | set from HH:MM | set to HH:MM
+import json, os, sys, subprocess, signal
+HOME = os.environ["HOME"]; CFG = HOME + "/.config/smof-night.json"
+RT = os.environ.get("XDG_RUNTIME_DIR", "/tmp"); PID = RT + "/smof-night.pid"
+BIN = os.environ.get("SMOF_WLSUNSET", "wlsunset")
+D = {"on": False, "temp": 3600, "from": "21:00", "to": "07:00"}
+def load():
+    try: d = dict(D); d.update(json.load(open(CFG))); return d
+    except Exception: return dict(D)
+def alive():
+    try: p = int(open(PID).read()); os.kill(p, 0); return p
+    except Exception: return 0
+def stop():
+    p = alive()
+    if p:
+        try: os.kill(p, signal.SIGTERM)
+        except OSError: pass
+    try: os.remove(PID)
+    except OSError: pass
+def apply():
+    c = load(); stop()
+    if not c["on"]: return
+    # wlsunset: -t night temperature, -T day temperature, -S sunrise, -s sunset (manual times)
+    p = subprocess.Popen([BIN, "-t", str(c["temp"]), "-T", "6500", "-s", c["from"], "-S", c["to"], "-d", "900"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    open(PID, "w").write(str(p.pid))
+a = sys.argv[1:] or ["status"]
+if a[0] == "status": c = load(); c["running"] = bool(alive()); print(json.dumps(c))
+elif a[0] == "apply": apply()
+elif a[0] == "set" and len(a) > 1:
+    c = load()
+    if a[1] in ("on", "off"): c["on"] = a[1] == "on"
+    elif a[1] == "temp" and len(a) > 2: c["temp"] = max(2500, min(6000, int(a[2])))
+    elif a[1] in ("from", "to") and len(a) > 2 and len(a[2]) == 5 and a[2][2] == ":": c[a[1]] = a[2]
+    os.makedirs(os.path.dirname(CFG), exist_ok=True); json.dump(c, open(CFG, "w")); apply(); print(json.dumps(load()))
+else: sys.exit(2)

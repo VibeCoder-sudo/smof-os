@@ -1,0 +1,89 @@
+#!/usr/bin/python3 -I
+# smof-wifi : Wi-Fi through NetworkManager, JSON for the shell.
+#   smof-wifi status | scan | radio on|off | connect SSID (password on stdin) | forget SSID | disconnect
+import json, subprocess, sys, os
+
+NM = os.environ.get("SMOF_NMCLI", "nmcli")
+
+def run(args, inp=None, timeout=45):
+    try:
+        p = subprocess.run([NM] + args, input=inp, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout, p.stderr.strip()
+    except FileNotFoundError:
+        return 127, "", "NetworkManager is not installed"
+    except subprocess.TimeoutExpired:
+        return 124, "", "timed out"
+
+def split(line):
+    # nmcli -t escapes ':' and '\' with a backslash
+    out, cur, esc = [], "", False
+    for ch in line:
+        if esc: cur += ch; esc = False
+        elif ch == "\\": esc = True
+        elif ch == ":": out.append(cur); cur = ""
+        else: cur += ch
+    out.append(cur)
+    return out
+
+def known():
+    rc, o, _ = run(["-t", "-f", "NAME,TYPE", "connection", "show"])
+    return {split(l)[0] for l in o.splitlines() if l and split(l)[1:2] == ["802-11-wireless"]}
+
+def status():
+    rc, o, e = run(["radio", "wifi"])
+    if rc != 0: return {"ok": False, "error": e or "no NetworkManager", "radio": False, "ssid": "", "ip": ""}
+    radio = o.strip() == "enabled"
+    ssid = ip = ""
+    rc, o, _ = run(["-t", "-f", "ACTIVE,SSID", "dev", "wifi"])
+    for l in o.splitlines():
+        f = split(l)
+        if f and f[0] == "yes": ssid = f[1]; break
+    rc, o, _ = run(["-t", "-f", "DEVICE,TYPE,STATE", "dev"])
+    dev = ""
+    for l in o.splitlines():
+        f = split(l)
+        if len(f) >= 3 and f[1] == "wifi" and f[2] == "connected": dev = f[0]
+    if dev:
+        rc, o, _ = run(["-t", "-g", "IP4.ADDRESS", "dev", "show", dev])
+        ip = o.strip().splitlines()[0].split("/")[0] if o.strip() else ""
+    return {"ok": True, "radio": radio, "ssid": ssid, "ip": ip}
+
+def scan():
+    st = status()
+    if not st["ok"] or not st["radio"]: return {"ok": st["ok"], "radio": st["radio"], "error": st.get("error", ""), "nets": []}
+    rc, o, e = run(["-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list", "--rescan", "auto"])
+    k = known()
+    best = {}
+    for l in o.splitlines():
+        f = split(l)
+        if len(f) < 4 or not f[1]: continue
+        n = {"ssid": f[1], "signal": int(f[2] or 0), "secure": f[3] not in ("", "--"), "active": f[0] == "*", "known": f[1] in k}
+        old = best.get(f[1])
+        if not old or n["active"] or (not old["active"] and n["signal"] > old["signal"]): best[f[1]] = n
+    nets = sorted(best.values(), key=lambda n: (not n["active"], not n["known"], -n["signal"]))
+    return {"ok": True, "radio": True, "nets": nets}
+
+def main():
+    a = sys.argv[1:]
+    if not a: a = ["status"]
+    c = a[0]
+    if c == "status": print(json.dumps(status()))
+    elif c == "scan": print(json.dumps(scan()))
+    elif c == "radio" and len(a) > 1:
+        rc, _, e = run(["radio", "wifi", "on" if a[1] == "on" else "off"]); print(json.dumps({"ok": rc == 0, "error": e}))
+    elif c == "connect" and len(a) > 1:
+        pw = sys.stdin.readline().rstrip("\n")
+        if a[1] in known() and not pw: rc, _, e = run(["connection", "up", a[1]])
+        else:
+            args = ["dev", "wifi", "connect", a[1]] + (["password", pw] if pw else [])
+            rc, _, e = run(args, timeout=60)
+        print(json.dumps({"ok": rc == 0, "error": e}))
+    elif c == "forget" and len(a) > 1:
+        rc, _, e = run(["connection", "delete", a[1]]); print(json.dumps({"ok": rc == 0, "error": e}))
+    elif c == "disconnect":
+        s = status()
+        rc, _, e = run(["connection", "down", s["ssid"]]) if s.get("ssid") else (0, "", "")
+        print(json.dumps({"ok": rc == 0, "error": e}))
+    else: print(json.dumps({"ok": False, "error": "usage"})); sys.exit(2)
+
+main()

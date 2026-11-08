@@ -12,7 +12,7 @@ say() { printf '\n== %s\n' "$*"; }
 
 say "tools and build dependencies"
 pacman -Syu --noconfirm --needed archiso base-devel git meson ninja cmake pkgconf glm vulkan-headers wayland-protocols \
-  wayfire quickshell ncnn rsync python
+  wayfire quickshell ncnn rsync python python-numpy
 rm -rf "$WORK"; mkdir -p "$WORK" "$OUT"
 STAGE="$WORK/stage"; mkdir -p "$STAGE"/{usr/local/bin,usr/local/sbin,usr/lib/wayfire,usr/share/wayfire/metadata,usr/share/smof,etc/fonts/conf.d,usr/share/fonts/smof}
 
@@ -48,11 +48,22 @@ install -m 644 "$BASE/vm/fonts-smof.conf" "$STAGE/etc/fonts/conf.d/60-smof.conf"
 say "scripts"
 for s in smof-activity smof-askpass smof-bgapps smof-brew smof-cleanup smof-desktop smof-devwatch smof-display smof-downloads smof-fileops smof-files \
          smof-front smof-health smof-input smof-ipc smof-menubridge smof-pkg smof-session smof-settings smof-shell smof-shot smof-sound smof-store \
-         smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme; do
+         smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme smof-wifi smof-bt smof-night smof-spotlight smof-snap; do
   [ -f "$BASE/vm/$s" ] || { echo "missing script $s"; exit 1; }
   install -m 755 "$BASE/vm/$s" "$STAGE/usr/local/bin/$s"
 done
 install -m 755 "$BASE/vm/sudo-wrapper" "$STAGE/usr/local/bin/sudo"
+# search that understands meaning: the numpy runner and the converted multilingual-e5-small model, without them the search falls back to words
+say "search model"
+mkdir -p "$STAGE/usr/local/lib/smof" "$STAGE/usr/share/smof/models/e5-small"
+install -m 644 "$BASE/vm/spot/smof_embed.py" "$STAGE/usr/local/lib/smof/smof_embed.py"
+MT=$(mktemp -d)
+if curl -fsSL --retry 3 -o "$MT/model.safetensors" https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/model.safetensors \
+   && curl -fsSL --retry 3 -o "$MT/sentencepiece.bpe.model" https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/sentencepiece.bpe.model \
+   && python3 "$BASE/vm/spot/convert_e5.py" "$MT/model.safetensors" "$STAGE/usr/share/smof/models/e5-small/model.npz"; then
+  cp "$MT/sentencepiece.bpe.model" "$STAGE/usr/share/smof/models/e5-small/"
+else echo "search model not available, the search will use words only"; rm -rf "$STAGE/usr/share/smof/models/e5-small"; fi
+rm -rf "$MT"
 for s in smof-oobe smof-splash smof-install; do install -m 755 "$BASE/vm/$s" "$STAGE/usr/local/sbin/$s"; done
 cp -r "$HERE/overlay/." "$STAGE/"
 chmod 755 "$STAGE/usr/local/bin/"* "$STAGE/usr/local/sbin/"*
@@ -124,6 +135,7 @@ ln -sf /etc/systemd/system/smof-live-home.service "$A/etc/systemd/system/multi-u
 rm -rf "$A/etc/systemd/system/getty@tty1.service.d"
 ln -sf /usr/lib/systemd/system/greetd.service "$A/etc/systemd/system/display-manager.service"
 ln -sf /etc/systemd/system/smof-rawlog.service "$A/etc/systemd/system/multi-user.target.wants/smof-rawlog.service"
+ln -sf /usr/lib/systemd/system/bluetooth.service "$A/etc/systemd/system/multi-user.target.wants/bluetooth.service"
 ln -sf /usr/lib/systemd/system/seatd.service "$A/etc/systemd/system/multi-user.target.wants/seatd.service"
 ln -sf /usr/lib/systemd/system/NetworkManager.service "$A/etc/systemd/system/multi-user.target.wants/NetworkManager.service"
 rm -f "$A/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" "$A/etc/systemd/system/sockets.target.wants/systemd-networkd.socket" 2>/dev/null || true

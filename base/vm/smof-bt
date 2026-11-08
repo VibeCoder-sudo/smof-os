@@ -1,0 +1,37 @@
+#!/usr/bin/python3 -I
+# smof-bt : Bluetooth through bluetoothctl, JSON for the shell.
+#   smof-bt status | scan | power on|off | pair MAC | connect MAC | disconnect MAC | forget MAC
+import subprocess, sys, json, os, re, time
+CTL = os.environ.get("SMOF_BTCTL", "bluetoothctl")
+def ctl(args, timeout=20):
+    try:
+        p = subprocess.run([CTL] + args, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout + p.stderr
+    except FileNotFoundError: return 127, "Bluetooth is not installed"
+    except subprocess.TimeoutExpired: return 124, "timed out"
+def info(mac):
+    rc, o = ctl(["info", mac])
+    g = lambda k: (re.search(r"^\s*%s: (.*)$" % k, o, re.M) or [None, ""])[1].strip()
+    return {"mac": mac, "name": g("Alias") or g("Name") or mac, "paired": g("Paired") == "yes", "connected": g("Connected") == "yes", "icon": g("Icon")}
+def status():
+    rc, o = ctl(["show"])
+    if rc != 0 or "No default controller" in o: return {"ok": False, "error": "No Bluetooth adapter found", "power": False, "devices": []}
+    power = re.search(r"Powered: (\w+)", o); power = bool(power and power.group(1) == "yes")
+    rc, d = ctl(["devices"])
+    devs = [info(m.group(1)) for m in re.finditer(r"^Device ([0-9A-F:]{17}) ", d, re.M)]
+    devs.sort(key=lambda x: (not x["connected"], not x["paired"], x["name"].lower()))
+    return {"ok": True, "power": power, "devices": devs}
+a = sys.argv[1:] or ["status"]
+c = a[0]
+if c == "status": print(json.dumps(status()))
+elif c == "scan":
+    ctl(["power", "on"]); subprocess.run([CTL, "--timeout", "6", "scan", "on"], capture_output=True, timeout=15); print(json.dumps(status()))
+elif c == "power" and len(a) > 1:
+    rc, o = ctl(["power", "on" if a[1] == "on" else "off"]); print(json.dumps({"ok": rc == 0, "error": "" if rc == 0 else o.strip()}))
+elif c in ("pair", "connect", "disconnect") and len(a) > 1:
+    if c == "pair": ctl(["pair", a[1]], 40); ctl(["trust", a[1]]); c = "connect"
+    rc, o = ctl([c, a[1]], 30); ok = "successful" in o.lower() or rc == 0 and "fail" not in o.lower()
+    print(json.dumps({"ok": ok, "error": "" if ok else (o.strip().splitlines() or ["failed"])[-1]}))
+elif c == "forget" and len(a) > 1:
+    rc, o = ctl(["remove", a[1]]); print(json.dumps({"ok": rc == 0, "error": ""}))
+else: print(json.dumps({"ok": False, "error": "usage"})); sys.exit(2)

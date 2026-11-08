@@ -66,8 +66,45 @@ PanelWindow {
         else it.entry.execute()
     }
 
+    // ---- search that understands meaning: smof-spotlight keeps running and answers one line per query ----
+    property bool spotOn: false
+    property var spotAnswer: ""
+    property var spotHits: []
+    property string spotQ: ""
+    Process {
+        id: spotP
+        command: ["/usr/local/bin/smof-spotlight", "serve"]
+        running: lw.spotOn
+        stdinEnabled: true
+        stdout: SplitParser { onRead: (line) => { try { var o = JSON.parse(line); if (o.q === lw.spotQ) { lw.spotAnswer = o.answer; lw.spotHits = o.hits } } catch (e) {} } }
+    }
+    Timer { id: spotT; interval: 140; onTriggered: { var q = search.text.trim(); lw.spotQ = q; if (q.length > 0 && spotP.running) spotP.write(JSON.stringify({ q: q }) + "\n"); else { lw.spotAnswer = ""; lw.spotHits = [] } } }
+    // what the list shows for a typed text: the answer, apps matched by name, then the hits of the meaning search
+    readonly property var results: {
+        var out = []
+        if (lw.spotAnswer !== "" && lw.spotQ === search.text.trim()) out.push({ kind: "answer", name: lw.spotAnswer, sub: "Answer, press Return to copy" })
+        var seen = {}
+        for (var i = 0; i < lw.items.length && out.length < 7; i++) { var it = lw.items[i]; out.push({ kind: "app", name: it.name, sub: "App", icon: it.icon, app: it }); seen[it.name] = true }
+        if (lw.spotQ === search.text.trim()) for (var j = 0; j < lw.spotHits.length; j++) {
+            var h = lw.spotHits[j]
+            if (h.kind === "app" && seen[h.name]) continue
+            var sub = h.kind === "file" ? h.id.replace(Quickshell.env("HOME"), "~") : (h.kind === "clip" ? "Clipboard" : "App")
+            out.push({ kind: h.kind, name: h.name, sub: sub, icon: h.icon, id: h.id }); seen[h.name] = true
+        }
+        return out
+    }
+    function openResult(r) {
+        if (!r) return
+        lw.close()
+        if (r.kind === "app" && r.app) { lw.launchItem(r.app); return }
+        if (r.kind === "app") { var ds = DesktopEntries.applications.values; for (var k = 0; k < ds.length; k++) if (ds[k].id === r.id) { lw.launchItem({ entry: ds[k] }); return } return }
+        if (r.kind === "file") Quickshell.execDetached(["xdg-open", r.id])
+        else if (r.kind === "clip") Quickshell.execDetached(["sh", "-c", "cliphist decode " + r.id + " | wl-copy"])
+        else if (r.kind === "answer") Quickshell.execDetached(["wl-copy", r.name.split(" ")[0]])
+    }
+
     onVisibleChanged: if (visible && lw.open) { search.text = ""; search.forceActiveFocus() }
-    onOpenChanged: if (open) { search.text = ""; search.forceActiveFocus() }
+    onOpenChanged: if (open) { lw.spotOn = true; search.text = ""; search.forceActiveFocus() }
 
     Item {
         id: root
@@ -98,7 +135,7 @@ PanelWindow {
                 id: sbox
                 x: 28; y: 28; width: parent.width - 56; height: 52; radius: 26
                 color: Theme.glass2
-                T { visible: search.text === ""; x: 52; anchors.verticalCenter: parent.verticalCenter; text: "Search apps"; font.pixelSize: 18; color: Theme.i5 }
+                T { visible: search.text === ""; x: 52; anchors.verticalCenter: parent.verticalCenter; text: "Search apps, files, or ask a question"; font.pixelSize: 18; color: Theme.i5 }
                 Image { x: 18; anchors.verticalCenter: parent.verticalCenter; width: 20; height: 20; sourceSize: Qt.size(60, 60); opacity: .7
                     source: "file:///usr/share/smof/icons/grid" + Theme.sfx + ".svg" }
                 TextInput {
@@ -108,13 +145,46 @@ PanelWindow {
                     clip: true
                     selectByMouse: true
                     Keys.onEscapePressed: lw.close()
-                    Keys.onReturnPressed: lw.launchItem(lw.items[0])
-                    onTextChanged: grid.positionViewAtBeginning()
+                    Keys.onReturnPressed: { if (search.text.trim() === "") lw.launchItem(lw.items[0]); else lw.openResult(lw.results[Math.max(0, rlist.currentIndex)]) }
+                    Keys.onDownPressed: rlist.currentIndex = Math.min(rlist.count - 1, rlist.currentIndex + 1)
+                    Keys.onUpPressed: rlist.currentIndex = Math.max(0, rlist.currentIndex - 1)
+                    onTextChanged: { grid.positionViewAtBeginning(); rlist.currentIndex = 0; spotT.restart() }
+                }
+            }
+
+            // typed text: results of apps, files, clipboard and answers
+            ListView {
+                id: rlist
+                visible: search.text.trim() !== ""
+                x: 20; y: 100
+                width: parent.width - 40; height: parent.height - 120
+                clip: true; spacing: 2
+                boundsBehavior: Flickable.StopAtBounds
+                model: lw.results
+                currentIndex: 0
+                delegate: Item {
+                    id: rr
+                    required property var modelData
+                    required property int index
+                    width: rlist.width; height: modelData.kind === "answer" ? 84 : 58
+                    Rectangle { anchors.fill: parent; radius: 18; color: Theme.acc; opacity: rma.containsMouse ? .14 : (rr.index === rlist.currentIndex ? .10 : 0) }
+                    Item { x: 14; y: (rr.height - 38) / 2; width: 38; height: 38
+                        Image { id: ri; anchors.fill: parent; visible: status === Image.Ready && rr.modelData.kind === "app"
+                            source: rr.modelData.kind !== "app" || !rr.modelData.icon ? "" : (rr.modelData.icon.charAt(0) === "/" ? "file://" + rr.modelData.icon : "file:///usr/share/icons/Papirus/64x64/apps/" + rr.modelData.icon + ".svg")
+                            sourceSize: Qt.size(76, 76); fillMode: Image.PreserveAspectFit; smooth: true }
+                        Rectangle { visible: !ri.visible; anchors.fill: parent; radius: 12; color: rr.modelData.kind === "file" ? Theme.pxbg : (rr.modelData.kind === "answer" ? Theme.acc : Theme.moonbg)
+                            T { anchors.centerIn: parent; text: rr.modelData.kind === "file" ? "F" : (rr.modelData.kind === "clip" ? "C" : (rr.modelData.kind === "answer" ? "=" : (rr.modelData.name || "?").charAt(0).toUpperCase())); w: 600; font.pixelSize: 18; color: rr.modelData.kind === "answer" ? Theme.onacc : Theme.acc } }
+                    }
+                    Column { x: 68; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 90; spacing: 2
+                        T { text: rr.modelData.name; font.pixelSize: rr.modelData.kind === "answer" ? 30 : 17; w: rr.modelData.kind === "answer" ? 640 : 520; elide: Text.ElideRight; width: parent.width; maximumLineCount: 1 }
+                        T { text: rr.modelData.sub; font.pixelSize: 13; color: Theme.i55; elide: Text.ElideMiddle; width: parent.width; maximumLineCount: 1 } }
+                    MouseArea { id: rma; anchors.fill: parent; hoverEnabled: true; onClicked: lw.openResult(rr.modelData) }
                 }
             }
 
             GridView {
                 id: grid
+                visible: search.text.trim() === ""
                 x: 20; y: 100
                 width: parent.width - 40; height: parent.height - 120
                 cellWidth: Math.floor(width / Math.max(1, Math.floor(width / 150)))
