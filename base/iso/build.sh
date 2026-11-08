@@ -53,7 +53,7 @@ for s in smof-activity smof-askpass smof-bgapps smof-brew smof-cleanup smof-desk
   install -m 755 "$BASE/vm/$s" "$STAGE/usr/local/bin/$s"
 done
 install -m 755 "$BASE/vm/sudo-wrapper" "$STAGE/usr/local/bin/sudo"
-for s in smof-oobe smof-splash; do install -m 755 "$BASE/vm/$s" "$STAGE/usr/local/sbin/$s"; done
+for s in smof-oobe smof-splash smof-install; do install -m 755 "$BASE/vm/$s" "$STAGE/usr/local/sbin/$s"; done
 cp -r "$HERE/overlay/." "$STAGE/"
 chmod 755 "$STAGE/usr/local/bin/"* "$STAGE/usr/local/sbin/"*
 chmod 440 "$STAGE/etc/sudoers.d/smof"
@@ -105,6 +105,7 @@ d /var/lib/smof/wp 0777 root root -
 f /var/lib/smof/theme 0666 root root - dark
 f /var/lib/smof/look.json 0666 root root - {}
 f /var/lib/smof/oobe-state 0644 root root - pending
+f /var/lib/smof/live 0644 root root - live
 TMP
 # the live home folder belongs to the live user, the profile can not set that for every file
 mkdir -p "$A/etc/systemd/system/multi-user.target.wants" "$A/etc/systemd/system/sysinit.target.wants"

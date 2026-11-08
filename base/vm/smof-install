@@ -1,0 +1,212 @@
+#!/usr/bin/python3
+# smof-install: puts the running Smof live image onto a disk, next to Windows if it is there. Run as root.
+# Every step prints one line of JSON so a window can show the progress.
+#   smof-install list                                   disks, partitions and free space as JSON
+#   smof-install run --disk /dev/sda [--part /dev/sda5] [--esp /dev/sda1] [--min-gb 12] [--src DIR] [--no-boot]
+# With --part the partition must be empty (no file system). Without it a partition is made in the largest free space of --disk.
+# Nothing existing is ever deleted or formatted: only the new partition is formatted, and the boot loader is added to the existing EFI partition.
+import os, sys, json, subprocess, re, shutil, time, argparse
+
+TARGET = "/mnt/smof-target"
+ESP_TYPE = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+
+def say(**kw):
+    print(json.dumps(kw), flush=True)
+
+def sh(cmd, check=True, input=None):
+    r = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True, text=True, input=input)
+    if check and r.returncode != 0:
+        raise RuntimeError("%s -> %s" % (cmd if isinstance(cmd, str) else " ".join(cmd), (r.stderr or r.stdout).strip()[-400:]))
+    return r.stdout
+
+def disks():
+    j = json.loads(sh(["lsblk", "-J", "-b", "-o", "NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,PARTTYPE,MOUNTPOINT,MODEL,TRAN,RM,PTTYPE"]))
+    out = []
+    for d in j["blockdevices"]:
+        skip = ("sr", "zram", "ram") if os.environ.get("SMOF_TEST") else ("loop", "sr", "zram", "ram")
+        kinds = ("disk", "loop") if os.environ.get("SMOF_TEST") else ("disk",)
+        if d["type"] not in kinds or d["name"].startswith(skip):
+            continue
+        out.append(d)
+    return out
+
+def free_regions(dev):
+    """free gaps of a disk in bytes: [(start, end)] from parted -m"""
+    o = sh(["parted", "-m", "-s", dev, "unit", "B", "print", "free"], check=False)
+    res = []
+    for l in o.splitlines():
+        p = l.rstrip(";").split(":")
+        if len(p) >= 5 and p[4] == "free":
+            res.append((int(p[1].rstrip("B")), int(p[2].rstrip("B"))))
+    return res
+
+def do_list():
+    out = []
+    for d in disks():
+        item = {"path": d["path"], "size": int(d["size"]), "model": (d.get("model") or "").strip(), "tran": d.get("tran"), "removable": bool(d.get("rm")),
+                "partitions": [], "free": [{"start": s, "end": e, "size": e - s + 1} for s, e in free_regions(d["path"]) if e - s + 1 >= 64 * 1048576]}
+        for c in d.get("children", []) or []:
+            item["partitions"].append({"path": c["path"], "size": int(c["size"]), "fstype": c.get("fstype"), "label": c.get("label"),
+                                       "esp": (c.get("parttype") or "").lower() == ESP_TYPE, "mounted": c.get("mountpoint")})
+        out.append(item)
+    print(json.dumps(out), flush=True)
+
+def part_path(disk, n):
+    return disk + ("p" if disk[-1].isdigit() else "") + str(n)
+
+def find_esp(disk, exclude_labels=("SMOF_202611",)):
+    for d in disks():
+        if d["path"] != disk:
+            continue
+        best = None
+        for c in d.get("children", []) or []:
+            if (c.get("parttype") or "").lower() == ESP_TYPE and (c.get("fstype") or "") == "vfat" and c.get("label") not in exclude_labels:
+                if best is None or int(c["size"]) < int(best["size"]):
+                    best = c
+        return best["path"] if best else None
+    return None
+
+def run(a):
+    if os.geteuid() != 0:
+        raise RuntimeError("run as root")
+    src = a.src or ("/run/archiso/airootfs" if os.path.isdir("/run/archiso/airootfs") else None)
+    if not src:
+        raise RuntimeError("this is not a live Smof image, give --src for a test")
+    disk = a.disk
+    if not os.path.exists(disk):
+        raise RuntimeError("no such disk " + disk)
+    # 1. the partition
+    say(step="partition", pct=2, text="Preparing the disk")
+    if a.part:
+        part = a.part
+        if sh(["blkid", "-o", "value", "-s", "TYPE", part], check=False).strip():
+            raise RuntimeError(part + " already has a file system, I only use empty space")
+    else:
+        regs = sorted(free_regions(disk), key=lambda r: r[1] - r[0], reverse=True)
+        need = a.min_gb * 1024 ** 3
+        if not regs or regs[0][1] - regs[0][0] + 1 < need:
+            raise RuntimeError("no free space of at least %d GB on %s, shrink a partition first" % (a.min_gb, disk))
+        s, e = regs[0]
+        ss = int(sh(["blockdev", "--getss", disk]).strip())
+        start = (-(-s // 1048576)) * 1048576 // ss          # aligned to 1 MiB
+        end = ((e + 1) // 1048576) * 1048576 // ss - 1
+        before = {c["path"] for d in disks() if d["path"] == disk for c in d.get("children", []) or []}
+        sh(["sgdisk", "-n", "0:%d:%d" % (start, end), "-t", "0:8300", "-c", "0:Smof", disk])
+        sh(["partprobe", disk], check=False); sh(["udevadm", "settle"], check=False); time.sleep(1)
+        after = {c["path"] for d in disks() if d["path"] == disk for c in d.get("children", []) or []}
+        new = sorted(after - before)
+        if len(new) != 1:
+            raise RuntimeError("could not find the new partition")
+        part = new[0]
+    say(step="partition", pct=6, text="Partition " + part)
+    # 2. file system
+    sh(["mkfs.ext4", "-F", "-q", "-L", "SMOF_ROOT", part])
+    uuid = sh(["blkid", "-o", "value", "-s", "UUID", part]).strip()
+    os.makedirs(TARGET, exist_ok=True)
+    sh(["mount", part, TARGET])
+    say(step="format", pct=9, text="File system ready")
+    esp = None
+    try:
+        # 3. unpack the system
+        say(step="unpack", pct=10, text="Unpacking Smof")
+        ex = ["--exclude=/dev/*", "--exclude=/proc/*", "--exclude=/sys/*", "--exclude=/run/*", "--exclude=/tmp/*", "--exclude=/mnt/*", "--exclude=/var/cache/pacman/pkg/*"]
+        p = subprocess.Popen(["rsync", "-aAXH", "--info=progress2", "--no-inc-recursive"] + ex + [src.rstrip("/") + "/", TARGET + "/"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        last = -1
+        for line in p.stdout:
+            m = re.search(r"(\d+)%", line)
+            if m and int(m.group(1)) != last:
+                last = int(m.group(1)); say(step="unpack", pct=10 + int(last * 0.6), text="Unpacking Smof, %d%%" % last)
+        if p.wait() not in (0, 23, 24):
+            raise RuntimeError("copying the system failed")
+        for d in ("dev", "proc", "sys", "run", "tmp", "mnt"):
+            os.makedirs(os.path.join(TARGET, d), exist_ok=True)
+        os.chmod(os.path.join(TARGET, "tmp"), 0o1777)
+        # 4. kernel and microcode: the live image keeps them on the boot medium, not in the system
+        say(step="kernel", pct=72, text="Kernel")
+        boot = os.path.join(TARGET, "boot"); os.makedirs(boot, exist_ok=True)
+        for root in ("/run/archiso/bootmnt/smof/boot", "/run/archiso/bootmnt/arch/boot"):
+            if os.path.isdir(root):
+                for f, dst in (("x86_64/vmlinuz-linux", "vmlinuz-linux"), ("intel-ucode.img", "intel-ucode.img"), ("amd-ucode.img", "amd-ucode.img")):
+                    if os.path.exists(os.path.join(root, f)):
+                        shutil.copy2(os.path.join(root, f), os.path.join(boot, dst))
+                break
+        # 5. configuration of the installed system
+        say(step="config", pct=76, text="Configuring")
+        esp = a.esp or find_esp(disk)
+        espuuid = None
+        if esp and not a.no_boot:
+            os.makedirs(boot + "/efi", exist_ok=True)
+            sh(["mount", esp, boot + "/efi"])
+            espuuid = sh(["blkid", "-o", "value", "-s", "UUID", esp]).strip()
+            bk = TARGET + "/var/lib/smof/esp-backup"; os.makedirs(bk, exist_ok=True)
+            if os.path.isdir(boot + "/efi/EFI"):
+                sh(["cp", "-a", boot + "/efi/EFI", bk])
+        with open(TARGET + "/etc/fstab", "w") as f:
+            f.write("# written by smof-install\nUUID=%s / ext4 defaults,noatime 0 1\n" % uuid)
+            if espuuid: f.write("UUID=%s /boot/efi vfat umask=0077 0 2\n" % espuuid)
+        # what only makes sense in the live image
+        for path in ("/etc/sudoers.d/smof", "/etc/systemd/system/smof-bootlink.service", "/etc/systemd/system/smof-bootlink-once.service",
+                     "/etc/systemd/system/multi-user.target.wants/smof-bootlink.service", "/etc/systemd/system/multi-user.target.wants/smof-bootlink-once.service",
+                     "/etc/mkinitcpio.conf.d/archiso.conf", "/etc/sysusers.d/smof-live.conf", "/usr/local/bin/smof-bootlink"):
+            try: os.remove(TARGET + path)
+            except OSError: pass
+        shutil.rmtree(TARGET + "/home/smof", ignore_errors=True)
+        for fn in ("passwd", "shadow", "group", "gshadow"):
+            p2 = TARGET + "/etc/" + fn
+            if os.path.exists(p2):
+                keep = []
+                for l in open(p2).read().splitlines():
+                    if l.startswith("smof:"): continue
+                    keep.append(re.sub(r"([:,])smof(?=,|$)", r"\1", l).replace(":,", ":"))
+                open(p2, "w").write("\n".join(keep) + "\n")
+        os.makedirs(TARGET + "/etc/sudoers.d", exist_ok=True)
+        with open(TARGET + "/etc/sudoers.d/10-wheel", "w") as f: f.write("%wheel ALL=(ALL:ALL) ALL\n")
+        os.chmod(TARGET + "/etc/sudoers.d/10-wheel", 0o440)
+        sm = TARGET + "/etc/sudoers.d/smof-system"
+        with open(sm, "w") as f:
+            f.write("%wheel ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /usr/bin/systemctl reboot\n%wheel ALL=(root) NOPASSWD: /usr/local/sbin/smof-splash\ngreeter ALL=(root) NOPASSWD: /usr/local/sbin/smof-oobe\n")
+        os.chmod(sm, 0o440)
+        os.makedirs(TARGET + "/var/lib/smof", exist_ok=True)
+        with open(TARGET + "/var/lib/smof/oobe-state", "w") as f: f.write("pending\n")
+        os.chmod(TARGET + "/var/lib/smof", 0o777)
+        # first start asks who you are, the installed system creates your account then
+        if os.path.lexists(TARGET + "/etc/localtime") is False:
+            os.symlink("/usr/share/zoneinfo/UTC", TARGET + "/etc/localtime")
+        if not a.no_boot:
+            def chroot(cmd): sh(["arch-chroot", TARGET, "sh", "-c", cmd])
+            say(step="initramfs", pct=82, text="Building the boot image")
+            with open(TARGET + "/etc/mkinitcpio.conf.d/smof.conf", "w") as f:
+                f.write("HOOKS=(base udev autodetect microcode modconf kms keyboard keymap block filesystems fsck)\n")
+            chroot("v=$(ls /usr/lib/modules | head -1); mkinitcpio -k $v -g /boot/initramfs-linux.img")
+            if not esp:
+                raise RuntimeError("no EFI partition on " + disk + ", I cannot add the boot loader")
+            say(step="bootloader", pct=90, text="Adding the boot menu")
+            with open(TARGET + "/etc/default/grub", "w") as f:
+                f.write('GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\nGRUB_DISTRIBUTOR="Smof"\nGRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3"\nGRUB_CMDLINE_LINUX=""\nGRUB_DISABLE_OS_PROBER=false\nGRUB_DISABLE_RECOVERY=true\n')
+            chroot("grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Smof --recheck")
+            # Windows is added by hand, so it does not depend on os-prober being installed
+            if os.path.exists(boot + "/efi/EFI/Microsoft/Boot/bootmgfw.efi") and espuuid:
+                with open(TARGET + "/etc/grub.d/40_custom", "w") as f:
+                    f.write("#!/bin/sh\nexec tail -n +3 $0\nmenuentry 'Windows' --class windows --class os {\n  insmod part_gpt\n  insmod fat\n  search --no-floppy --fs-uuid --set=root %s\n  chainloader /EFI/Microsoft/Boot/bootmgfw.efi\n}\n" % espuuid)
+                os.chmod(TARGET + "/etc/grub.d/40_custom", 0o755)
+            chroot("grub-mkconfig -o /boot/grub/grub.cfg")
+        say(step="done", pct=100, text="Installed", root=part, esp=esp)
+    finally:
+        sh("sync", check=False)
+        sh(["umount", "-R", TARGET], check=False)
+
+def main():
+    ap = argparse.ArgumentParser()
+    sp = ap.add_subparsers(dest="cmd", required=True)
+    sp.add_parser("list")
+    r = sp.add_parser("run")
+    r.add_argument("--disk", required=True); r.add_argument("--part"); r.add_argument("--esp")
+    r.add_argument("--min-gb", type=int, default=12); r.add_argument("--src"); r.add_argument("--no-boot", action="store_true")
+    a = ap.parse_args()
+    try:
+        if a.cmd == "list": do_list()
+        else: run(a)
+    except Exception as e:
+        say(step="error", text=str(e)); sys.exit(1)
+
+main()

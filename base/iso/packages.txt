@@ -62,3 +62,13 @@ fastfetch
 which
 openssh
 rsync
+grub
+efibootmgr
+os-prober
+ntfs-3g
+gptfdisk
+parted
+dosfstools
+e2fsprogs
+arch-install-scripts
+mkinitcpio
