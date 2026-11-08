@@ -104,6 +104,7 @@ d /var/lib/smof 0777 root root -
 d /var/lib/smof/wp 0777 root root -
 f /var/lib/smof/theme 0666 root root - dark
 f /var/lib/smof/look.json 0666 root root - {}
+f /var/lib/smof/oobe-state 0644 root root - pending
 TMP
 # the live home folder belongs to the live user, the profile can not set that for every file
 mkdir -p "$A/etc/systemd/system/multi-user.target.wants" "$A/etc/systemd/system/sysinit.target.wants"
@@ -121,6 +122,7 @@ ln -sf /etc/systemd/system/smof-live-home.service "$A/etc/systemd/system/multi-u
 # services: the desktop and the network. The default root autologin on the console is removed, greetd owns the first screen.
 rm -rf "$A/etc/systemd/system/getty@tty1.service.d"
 ln -sf /usr/lib/systemd/system/greetd.service "$A/etc/systemd/system/display-manager.service"
+ln -sf /etc/systemd/system/smof-logdump.service "$A/etc/systemd/system/multi-user.target.wants/smof-logdump.service"
 ln -sf /usr/lib/systemd/system/seatd.service "$A/etc/systemd/system/multi-user.target.wants/seatd.service"
 ln -sf /usr/lib/systemd/system/NetworkManager.service "$A/etc/systemd/system/multi-user.target.wants/NetworkManager.service"
 rm -f "$A/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" "$A/etc/systemd/system/sockets.target.wants/systemd-networkd.socket" 2>/dev/null || true
@@ -134,6 +136,14 @@ extra = '''  ["/etc/sudoers.d/smof"]="0:0:440"
 s = s.replace("file_permissions=(\n", "file_permissions=(\n" + extra, 1)
 open(p, "w").write(s)
 PY
+
+# the boot menu entries say Smof, not Arch
+for f in "$P"/efiboot/loader/entries/*.conf; do
+  [ -f "$f" ] && sed -i -E 's/^title .*/title    Smof (x86_64, UEFI)/; s/Arch Linux install medium/Smof live image/' "$f"
+done
+for f in "$P"/syslinux/*.cfg "$P"/grub/grub.cfg; do
+  [ -f "$f" ] && sed -i 's/Arch Linux install medium/Smof live image/g' "$f"
+done
 
 say "building the image, this takes a while"
 mkarchiso -v -w "$WORK/work" -o "$OUT" "$P"

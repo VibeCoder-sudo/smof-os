@@ -1,11 +1,7 @@
-# live image: no lock screen, the desktop starts by itself as the live user
+# the first screen is the Smof greeter: the first-run setup on a fresh system, the lock screen afterwards
 [terminal]
 vt = 1
 
 [default_session]
 command = "env XCURSOR_THEME=Adwaita XCURSOR_SIZE=24 WLR_NO_HARDWARE_CURSORS=1 QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 systemd-cat -t smof-greeter wayfire -c /usr/share/smof/greeter-wayfire.ini"
 user = "greeter"
-
-[initial_session]
-command = "/usr/local/bin/smof-session"
-user = "smof"
