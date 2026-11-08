@@ -11,5 +11,5 @@ cd "$OUT"
 ls smof-shell-*.pkg.tar.* | grep -v '.sig$' | sort | head -n -3 | xargs rm -f        # keep the last three versions
 rm -f smof.db* smof.files*
 repo-add smof.db.tar.gz $(ls smof-shell-*.pkg.tar.* | grep -v '.sig$') >/dev/null
-cp -f smof.db.tar.gz smof.db
+rm -f smof.db smof.files smof.files.tar.gz; cp smof.db.tar.gz smof.db
 echo "repo ready in $OUT, version $SMOF_PKGVER"
