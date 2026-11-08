@@ -19,6 +19,20 @@ Item {
 
     function freeOf(d) { var t = 0; for (var i = 0; i < d.free.length; i++) t += d.free[i].size; return t }
     function usable(d) { for (var i = 0; i < d.free.length; i++) if (d.free[i].size >= w.needGb * w.gb) return true; return false }
+    // an empty partition of its own (no file system yet) that is big enough can be used as it is
+    function emptyParts(d) { var r = []; for (var i = 0; i < d.partitions.length; i++) { var p = d.partitions[i]; if (!p.fstype && !p.esp && p.size >= 10 * w.gb) r.push(p) } return r }
+    // the choices on the screen: free space on a disk, or an empty partition
+    function choices(list) {
+        var r = []
+        for (var i = 0; i < list.length; i++) {
+            var d = list[i]
+            r.push({ kind: "free", disk: d.path, part: "", title: w.nice(d) + "  " + w.fmt(d.size), sub: w.usable(d) ? w.fmt(w.freeOf(d)) + " free space, Smof takes the largest piece" : "Not enough free space (" + w.fmt(w.freeOf(d)) + ")", ok: w.usable(d) })
+            var ps = w.emptyParts(d)
+            for (var j = 0; j < ps.length; j++) r.push({ kind: "part", disk: d.path, part: ps[j].path, title: "Empty partition " + ps[j].path + "  " + w.fmt(ps[j].size), sub: "On " + w.nice(d) + ", Smof uses all of it", ok: true })
+        }
+        return r
+    }
+    property var opts: []
     function fmt(b) { return b >= w.gb ? (b / w.gb).toFixed(b >= 10 * w.gb ? 0 : 1) + " GB" : Math.round(b / 1048576) + " MB" }
     function nice(d) { return (d.model && d.model !== "" ? d.model : d.path) }
 
@@ -26,7 +40,8 @@ Item {
         id: listP
         command: ["/usr/bin/sudo", "-n", "/usr/local/sbin/smof-install", "list"]
         stdout: StdioCollector { onStreamFinished: { try { w.disks = JSON.parse(text) } catch (e) { w.disks = [] }
-            w.pick = -1; for (var i = 0; i < w.disks.length; i++) if (w.usable(w.disks[i])) { w.pick = i; break }
+            w.opts = w.choices(w.disks)
+            w.pick = -1; for (var i = 0; i < w.opts.length; i++) if (w.opts[i].ok) { w.pick = i; break }
             w.mode = "disks" } }
     }
     Process {
@@ -43,9 +58,11 @@ Item {
         onExited: (code) => { if (code !== 0 && w.mode === "working") { if (w.errText === "") w.errText = "The installer stopped"; w.mode = "error" } }
     }
     function startInstall() {
-        var d = w.disks[w.pick]
+        var o = w.opts[w.pick]
         w.pct = 0; w.stepText = "Starting"; w.errText = ""; w.mode = "working"
-        runP.command = ["/usr/bin/sudo", "-n", "/usr/local/sbin/smof-install", "run", "--disk", d.path, "--min-gb", String(w.needGb)]
+        var cmd = ["/usr/bin/sudo", "-n", "/usr/local/sbin/smof-install", "run", "--disk", o.disk, "--min-gb", String(w.needGb)]
+        if (o.kind === "part") cmd = cmd.concat(["--part", o.part])
+        runP.command = cmd
         runP.running = true
     }
     Process { id: rebootP; command: ["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "reboot"] }
@@ -72,20 +89,20 @@ Item {
 
         T { visible: w.mode === "disks"; text: "Where should Smof go?"; font.pixelSize: 40; w: 600; color: "#FFFFFF" }
         T { visible: w.mode === "disks"; width: parent.width; wrapMode: Text.WordWrap; font.pixelSize: 16; color: "#B8FFFFFF"
-            text: w.disks.length === 0 ? "Looking at the disks…" : "Smof is installed into free space, nothing that is already there is deleted or formatted. It needs at least " + w.needGb + " GB of free space. If there is none, shrink a partition in Windows first." }
+            text: w.disks.length === 0 ? "Looking at the disks…" : "Smof goes into free space or an empty partition. Nothing that is already there is deleted or formatted. It needs at least " + w.needGb + " GB." }
         Column {
             visible: w.mode === "disks"; width: parent.width; spacing: 10
             Repeater {
-                model: w.disks
+                model: w.opts
                 Rectangle {
                     required property var modelData
                     required property int index
-                    readonly property bool ok: w.usable(modelData)
+                    readonly property bool ok: modelData.ok
                     width: parent.width; height: 78; radius: 22
                     color: w.pick === index ? "#33FFFFFF" : "#1AFFFFFF"; border.color: w.pick === index ? Theme.acc : "#22FFFFFF"; border.width: w.pick === index ? 2 : 1
                     opacity: ok ? 1 : .45
-                    T { x: 22; y: 14; text: w.nice(modelData) + "  " + w.fmt(modelData.size); font.pixelSize: 19; w: 600; color: "#FFFFFF" }
-                    T { x: 22; y: 44; text: ok ? w.fmt(w.freeOf(modelData)) + " free space, Smof takes the largest piece" : "Not enough free space (" + w.fmt(w.freeOf(modelData)) + ")"; font.pixelSize: 15; color: "#B8FFFFFF" }
+                    T { x: 22; y: 14; text: modelData.title; font.pixelSize: 19; w: 600; color: "#FFFFFF" }
+                    T { x: 22; y: 44; text: modelData.sub; font.pixelSize: 15; color: "#B8FFFFFF" }
                     MouseArea { anchors.fill: parent; enabled: ok; onClicked: w.pick = index }
                 }
             }

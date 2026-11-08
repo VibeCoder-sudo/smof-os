@@ -55,16 +55,15 @@ def part_path(disk, n):
     return disk + ("p" if disk[-1].isdigit() else "") + str(n)
 
 def find_esp(disk, exclude_labels=("SMOF_202611",)):
+    """the EFI partition to put the boot loader on: one on the same disk if there is one, otherwise the one on any disk.
+    Windows leaves its own, we only add a folder to it."""
+    cands = []
     for d in disks():
-        if d["path"] != disk:
-            continue
-        best = None
         for c in d.get("children", []) or []:
             if (c.get("parttype") or "").lower() == ESP_TYPE and (c.get("fstype") or "") == "vfat" and c.get("label") not in exclude_labels:
-                if best is None or int(c["size"]) < int(best["size"]):
-                    best = c
-        return best["path"] if best else None
-    return None
+                cands.append((0 if d["path"] == disk else 1, int(c["size"]), c["path"]))
+    cands.sort()
+    return cands[0][2] if cands else None
 
 def run(a):
     if os.geteuid() != 0:
