@@ -76,3 +76,4 @@ python-sentencepiece
 bluez
 bluez-utils
 wlsunset
+wf-recorder

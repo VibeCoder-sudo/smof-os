@@ -88,8 +88,8 @@ PanelWindow {
         if (lw.spotQ === search.text.trim()) for (var j = 0; j < lw.spotHits.length; j++) {
             var h = lw.spotHits[j]
             if (h.kind === "app" && seen[h.name]) continue
-            var sub = h.kind === "file" ? h.id.replace(Quickshell.env("HOME"), "~") : (h.kind === "clip" ? "Clipboard" : "App")
-            out.push({ kind: h.kind, name: h.name, sub: sub, icon: h.icon, id: h.id }); seen[h.name] = true
+            var sub = h.kind === "file" ? h.id.replace(Quickshell.env("HOME"), "~") : (h.kind === "clip" ? "Clipboard" : (h.kind === "setting" ? "Settings" : (h.kind === "action" ? "Action" : "App")))
+            out.push({ kind: h.kind, name: h.name, sub: sub, icon: h.icon, id: h.id, cmd: h.cmd }); seen[h.name] = true
         }
         return out
     }
@@ -98,7 +98,8 @@ PanelWindow {
         lw.close()
         if (r.kind === "app" && r.app) { lw.launchItem(r.app); return }
         if (r.kind === "app") { var ds = DesktopEntries.applications.values; for (var k = 0; k < ds.length; k++) if (ds[k].id === r.id) { lw.launchItem({ entry: ds[k] }); return } return }
-        if (r.kind === "file") Quickshell.execDetached(["xdg-open", r.id])
+        if (r.kind === "setting" || r.kind === "action") Quickshell.execDetached(r.cmd)
+        else if (r.kind === "file") Quickshell.execDetached(["xdg-open", r.id])
         else if (r.kind === "clip") Quickshell.execDetached(["sh", "-c", "cliphist decode " + r.id + " | wl-copy"])
         else if (r.kind === "answer") Quickshell.execDetached(["wl-copy", r.name.split(" ")[0]])
     }
@@ -172,8 +173,8 @@ PanelWindow {
                         Image { id: ri; anchors.fill: parent; visible: status === Image.Ready && rr.modelData.kind === "app"
                             source: rr.modelData.kind !== "app" || !rr.modelData.icon ? "" : (rr.modelData.icon.charAt(0) === "/" ? "file://" + rr.modelData.icon : "file:///usr/share/icons/Papirus/64x64/apps/" + rr.modelData.icon + ".svg")
                             sourceSize: Qt.size(76, 76); fillMode: Image.PreserveAspectFit; smooth: true }
-                        Rectangle { visible: !ri.visible; anchors.fill: parent; radius: 12; color: rr.modelData.kind === "file" ? Theme.pxbg : (rr.modelData.kind === "answer" ? Theme.acc : Theme.moonbg)
-                            T { anchors.centerIn: parent; text: rr.modelData.kind === "file" ? "F" : (rr.modelData.kind === "clip" ? "C" : (rr.modelData.kind === "answer" ? "=" : (rr.modelData.name || "?").charAt(0).toUpperCase())); w: 600; font.pixelSize: 18; color: rr.modelData.kind === "answer" ? Theme.onacc : Theme.acc } }
+                        Rectangle { visible: !ri.visible; anchors.fill: parent; radius: 12; color: rr.modelData.kind === "file" ? Theme.pxbg : (rr.modelData.kind === "answer" ? Theme.acc : (rr.modelData.kind === "setting" ? Theme.sysbg : Theme.moonbg))
+                            T { anchors.centerIn: parent; text: rr.modelData.kind === "file" ? "F" : (rr.modelData.kind === "clip" ? "C" : (rr.modelData.kind === "answer" ? "=" : (rr.modelData.kind === "setting" ? "S" : (rr.modelData.kind === "action" ? ">" : (rr.modelData.name || "?").charAt(0).toUpperCase())))); w: 600; font.pixelSize: 18; color: rr.modelData.kind === "answer" ? Theme.onacc : Theme.acc } }
                     }
                     Column { x: 68; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 90; spacing: 2
                         T { text: rr.modelData.name; font.pixelSize: rr.modelData.kind === "answer" ? 30 : 17; w: rr.modelData.kind === "answer" ? 640 : 520; elide: Text.ElideRight; width: parent.width; maximumLineCount: 1 }

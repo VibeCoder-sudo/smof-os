@@ -1,0 +1,27 @@
+#!/bin/sh
+# smof-record [full|area] : screen recording toggle. First call starts, the next call (or the Stop button in the pill) saves the video in ~/Videos/Recordings.
+RT=${XDG_RUNTIME_DIR:-/tmp}; PID="$RT/smof-record.pid"; OUT="$RT/smof-record.file"
+REC=${SMOF_WFREC:-wf-recorder}; ACT=/usr/local/bin/smof-activity
+if [ -f "$PID" ] && kill -0 "$(cat "$PID")" 2>/dev/null; then
+  kill -INT "$(cat "$PID")"; sleep 1
+  f=$(cat "$OUT" 2>/dev/null); rm -f "$PID"
+  $ACT end record 2>/dev/null
+  $ACT set recdone --title "Recording saved" --sub "In Videos, Recordings" --icon video-x-generic --size medium --important --ttl 6 --action "Open=/usr/local/bin/smof-files $HOME/Videos/Recordings" 2>/dev/null
+  notify-send -a Recorder "Recording saved" "In Videos, Recordings" 2>/dev/null
+  exit 0
+fi
+dir="$HOME/Videos/Recordings"; mkdir -p "$dir"
+f="$dir/Recording $(date '+%Y-%m-%d %H.%M.%S').mp4"
+case "$1" in
+  area) g=$(slurp -b 00000055 -c 6B4FA8ff -w 2 2>/dev/null) || exit 0; [ -n "$g" ] || exit 0; env --default-signal=INT $REC -g "$g" -f "$f" >/dev/null 2>&1 & ;;
+  *) env --default-signal=INT $REC -f "$f" >/dev/null 2>&1 & ;;
+esac
+p=$!; echo "$p" > "$PID"; echo "$f" > "$OUT"
+# the pill shows the time while the recording runs
+(
+  t=0
+  while kill -0 "$p" 2>/dev/null; do
+    $ACT set record --title "Recording" --sub "$(printf '%02d:%02d' $((t/60)) $((t%60)))" --icon media-record --size tiny --important --ttl 4 --action "Stop=/usr/local/bin/smof-record" 2>/dev/null
+    sleep 1; t=$((t+1))
+  done
+) &

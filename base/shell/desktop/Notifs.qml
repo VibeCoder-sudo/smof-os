@@ -31,6 +31,7 @@ Singleton {
         if (live[id]) { try { live[id].dismiss() } catch (e) {} delete live[id] }
         for (var i = 0; i < store.count; i++) if (store.get(i).nid === id) { store.remove(i); break }
         hideToast(id)
+        Ui.sound(level === "error" ? "error" : (level === "warning" ? "warning" : "notify"))
         save()
     }
     // while the cursor is on a toast it stays; a short moment after the cursor leaves it goes
@@ -57,7 +58,8 @@ Singleton {
         var life = level === "error" ? 10000 : (level === "warning" ? 8000 : 5500)
         store.insert(0, { nid: id, app: app, summary: summary, body: body, level: level, time: Date.now() })
         while (store.count > 60) store.remove(store.count - 1)
-        if (!Ui.dnd) toasts.append({ nid: id, app: app, summary: summary, body: body, level: level, until: Date.now() + life, gone: 0, hide: false, hover: false, actions: JSON.stringify(actions || []) })
+        // the status pill already shows a screenshot, so its notification only goes into the list and does not cover the pill
+        if (!Ui.dnd && app !== "Screenshot") toasts.append({ nid: id, app: app, summary: summary, body: body, level: level, until: Date.now() + life, gone: 0, hide: false, hover: false, actions: JSON.stringify(actions || []) })
         save()
     }
 

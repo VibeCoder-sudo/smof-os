@@ -4,6 +4,10 @@ import QtQuick
 Item {
     id: wp
     property real depth: 0          // 0 lock, 1 login, 2 desktop
+    property string scope: "desktop"   // "lock" follows the lock screen choice, anything else the desktop one
+    readonly property string mode: scope === "lock" ? (Look.lockMode === "same" ? Look.wpMode : Look.lockMode) : Look.wpMode
+    readonly property string image: scope === "lock" && Look.lockMode === "image" ? Look.lockImage : Look.wpImage
+    readonly property var grad: { for (var i = 0; i < Look.gradients.length; i++) if (Look.gradients[i].id === mode) return Look.gradients[i]; return null }
     readonly property var amps: [10, 16, 22, 30, 40]
     readonly property var secs: [34, 28, 26, 22, 19]
     width: 1680
@@ -45,7 +49,7 @@ Item {
     Loader {
         id: lightL
         anchors.fill: parent
-        active: !Theme.dark || opacity > 0.01
+        active: wp.mode === "dunes" && (!Theme.dark || opacity > 0.01)
         opacity: Theme.dark ? 0 : 1
         Behavior on opacity { NumberAnimation { duration: 1200 } }
         property string themeName: "light"
@@ -54,10 +58,27 @@ Item {
     Loader {
         id: darkL
         anchors.fill: parent
-        active: Theme.dark || opacity > 0.01
+        active: wp.mode === "dunes" && (Theme.dark || opacity > 0.01)
         opacity: Theme.dark ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 1200 } }
         property string themeName: "dark"
         sourceComponent: set
+    }
+
+    Rectangle {
+        visible: wp.grad !== null
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop { position: 0; color: wp.grad ? (Theme.dark ? wp.grad.d1 : wp.grad.l1) : "transparent" }
+            GradientStop { position: 1; color: wp.grad ? (Theme.dark ? wp.grad.d2 : wp.grad.l2) : "transparent" }
+        }
+    }
+    Image {
+        visible: wp.mode === "image" && wp.image !== ""
+        anchors.fill: parent
+        asynchronous: true
+        fillMode: Image.PreserveAspectCrop
+        sourceSize: Qt.size(2520, 1716)
+        source: wp.mode === "image" && wp.image !== "" ? "file://" + wp.image : ""
     }
 }

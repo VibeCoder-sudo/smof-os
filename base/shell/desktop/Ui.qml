@@ -91,6 +91,8 @@ Singleton {
 
     // ---- talking to other Smof apps ----
     function run(args) { Quickshell.execDetached(args) }
+    // short system sounds: error, notify, trash. Quiet when sounds are off or Focus is on
+    function sound(name) { if (Look.sounds && !dnd) Quickshell.execDetached(["/usr/local/bin/smof-sound", name, String(Math.round(Look.soundVol * 100))]) }
     function ipc(app, target, fn, arg) {
         var a = ["/usr/local/bin/smof-ipc", app, target, fn]
         if (arg !== undefined) a.push(String(arg))

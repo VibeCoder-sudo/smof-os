@@ -48,7 +48,7 @@ install -m 644 "$BASE/vm/fonts-smof.conf" "$STAGE/etc/fonts/conf.d/60-smof.conf"
 say "scripts"
 for s in smof-activity smof-askpass smof-bgapps smof-brew smof-cleanup smof-desktop smof-devwatch smof-display smof-downloads smof-fileops smof-files \
          smof-front smof-health smof-input smof-ipc smof-menubridge smof-pkg smof-session smof-settings smof-shell smof-shot smof-sound smof-store \
-         smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme smof-wifi smof-bt smof-night smof-spotlight smof-snap; do
+         smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme smof-wifi smof-bt smof-night smof-spotlight smof-snap smof-record; do
   [ -f "$BASE/vm/$s" ] || { echo "missing script $s"; exit 1; }
   install -m 755 "$BASE/vm/$s" "$STAGE/usr/local/bin/$s"
 done

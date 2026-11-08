@@ -26,6 +26,12 @@ PopupWindow {
     }
     Timer { interval: 4000; repeat: true; running: pw.visible; triggeredOnStart: true; onTriggered: netp.running = true }
 
+    // Night Light state, the tile turns it on and off through smof-night
+    property bool nightOn: false
+    Process { id: nightGet; command: ["sh", "-c", "/usr/local/bin/smof-night status | grep -q '\"on\": true' && echo on || echo off"]; stdout: StdioCollector { onStreamFinished: pw.nightOn = text.trim() === "on" } }
+    Process { id: nightSet; property string v: "on"; command: ["/usr/local/bin/smof-night", "set", v]; onExited: nightGet.running = true }
+    onVisibleChanged: if (visible) nightGet.running = true
+
     SystemClock { id: clk; precision: SystemClock.Minutes }
 
     component QTile: Item {
@@ -88,11 +94,13 @@ PopupWindow {
 
             Grid {
                 columns: 3; spacing: 10
-                QTile { label: "Network"; sub: pw.net; on: pw.net === "Connected"; disabled: true }
+                QTile { label: "Wi-Fi"; sub: pw.net; on: pw.net === "Connected"; onClicked: { Ui.closeAll(); Ui.openSettings("network") } }
                 QTile { label: "Focus"; sub: Ui.dnd ? "No pop ups" : "Off"; on: Ui.dnd; onClicked: Ui.dnd = !Ui.dnd }
                 QTile { label: "Appearance"; sub: Theme.dark ? "Dark" : "Light"; on: Theme.dark; onClicked: Theme.toggle() }
                 QTile { label: "Calm"; sub: Ui.calm ? "Wallpaper still" : "Off"; on: Ui.calm; onClicked: Ui.calm = !Ui.calm }
                 QTile { label: "Low power"; sub: Ui.lowpower ? "On" : "Off"; on: Ui.lowpower; onClicked: { Ui.lowpower = !Ui.lowpower; Ui.calm = Ui.lowpower } }
+                QTile { label: "Night Light"; sub: pw.nightOn ? "On" : "Off"; on: pw.nightOn; onClicked: { nightSet.v = pw.nightOn ? "off" : "on"; pw.nightOn = !pw.nightOn; nightSet.running = true } }
+                QTile { label: "Bluetooth"; sub: "Open"; onClicked: { Ui.closeAll(); Ui.openSettings("bluetooth") } }
                 QTile { label: "Settings"; sub: "Open"; onClicked: { Ui.closeAll(); Ui.openSettings() } }
             }
 

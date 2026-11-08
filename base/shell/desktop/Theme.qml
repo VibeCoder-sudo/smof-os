@@ -10,17 +10,18 @@ Singleton {
     readonly property string sfx: dark ? "-d" : ""
 
     readonly property color ink: dark ? "#F4F0FF" : "#171229"
-    readonly property color i55: dark ? Qt.rgba(.957, .941, 1, .62) : Qt.rgba(.09, .07, .16, .55)
-    readonly property color i62: dark ? Qt.rgba(.957, .941, 1, .72) : Qt.rgba(.09, .07, .16, .62)
-    readonly property color i5:  dark ? Qt.rgba(.957, .941, 1, .55) : Qt.rgba(.09, .07, .16, .50)
+    readonly property color i55: dark ? Qt.rgba(.957, .941, 1, .78) : Qt.rgba(.09, .07, .16, .55)
+    readonly property color i62: dark ? Qt.rgba(.957, .941, 1, .86) : Qt.rgba(.09, .07, .16, .62)
+    readonly property color i5:  dark ? Qt.rgba(.957, .941, 1, .68) : Qt.rgba(.09, .07, .16, .50)
     readonly property color i8:  dark ? Qt.rgba(.957, .941, 1, .86) : Qt.rgba(.09, .07, .16, .80)
     readonly property color i6:  dark ? Qt.rgba(.957, .941, 1, .66) : Qt.rgba(.09, .07, .16, .60)
     readonly property color i12: dark ? Qt.rgba(.957, .941, 1, .16) : Qt.rgba(.09, .07, .16, .12)
     readonly property color i9:  dark ? Qt.rgba(.957, .941, 1, .92) : Qt.rgba(.09, .07, .16, .90)
     readonly property color onacc: dark ? "#171229" : "#FFFFFF"
-    readonly property color acc: dark ? "#B9A2FF" : "#6B4FA8"
-    readonly property color acc2: dark ? "#A58CF0" : "#8B6FD6"
-    readonly property color moonbg: dark ? Qt.rgba(.725, .635, 1, .24) : "#E4DAF8"
+    readonly property var ap: Look.accents[Look.accent]
+    readonly property color acc: Qt.color(dark ? ap.d : ap.l)
+    readonly property color acc2: dark ? Qt.darker(acc, 1.08) : Qt.lighter(acc, 1.25)
+    readonly property color moonbg: dark ? Qt.rgba(acc.r, acc.g, acc.b, .24) : Qt.tint("#FFFFFF", Qt.rgba(acc.r, acc.g, acc.b, .17))
     readonly property color glass: dark ? Qt.rgba(.133, .102, .282, .34) : Qt.rgba(1, 1, 1, .26)
     readonly property color glassBorder: dark ? Qt.rgba(1, 1, 1, .16) : Qt.rgba(1, 1, 1, .45)
     readonly property color sysbg: dark ? "#4A2B34" : "#FFE1D6"
@@ -35,8 +36,8 @@ Singleton {
     readonly property color winbg: dark ? "#1B1630" : "#F7F4FC"
     readonly property color sidebg: dark ? "#150F27" : "#EEE9F8"
     readonly property color cardbg: dark ? "#262040" : "#FFFFFF"
-    readonly property color glass2: dark ? Qt.rgba(1, 1, 1, .10) : Qt.rgba(1, 1, 1, .50)
-    readonly property color panelbg: dark ? Qt.rgba(.118, .094, .251, .55) : Qt.rgba(1, 1, 1, .45)
+    readonly property color glass2: dark ? Qt.rgba(1, 1, 1, .12) : Qt.rgba(1, 1, 1, .66)
+    readonly property color panelbg: dark ? Qt.rgba(.07, .05, .16, .68) : Qt.rgba(1, 1, 1, .42)
     readonly property color menubg: dark ? Qt.rgba(.118, .094, .251, .94) : Qt.rgba(1, 1, 1, .92)
     readonly property color pill: dark ? Qt.rgba(.04, .03, .12, .42) : Qt.rgba(.157, .11, .314, .30)
 
