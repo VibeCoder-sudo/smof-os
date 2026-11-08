@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply updates from the Smof boot partition before the desktop starts
+After=local-fs.target systemd-udevd.service
+Before=greetd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/smof-bootlink once
+
+[Install]
+WantedBy=multi-user.target

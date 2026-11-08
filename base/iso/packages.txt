@@ -61,3 +61,4 @@ nano
 fastfetch
 which
 openssh
+rsync

@@ -122,7 +122,8 @@ ln -sf /etc/systemd/system/smof-live-home.service "$A/etc/systemd/system/multi-u
 # services: the desktop and the network. The default root autologin on the console is removed, greetd owns the first screen.
 rm -rf "$A/etc/systemd/system/getty@tty1.service.d"
 ln -sf /usr/lib/systemd/system/greetd.service "$A/etc/systemd/system/display-manager.service"
-ln -sf /etc/systemd/system/smof-logdump.service "$A/etc/systemd/system/multi-user.target.wants/smof-logdump.service"
+ln -sf /etc/systemd/system/smof-bootlink-once.service "$A/etc/systemd/system/multi-user.target.wants/smof-bootlink-once.service"
+ln -sf /etc/systemd/system/smof-bootlink.service "$A/etc/systemd/system/multi-user.target.wants/smof-bootlink.service"
 ln -sf /usr/lib/systemd/system/seatd.service "$A/etc/systemd/system/multi-user.target.wants/seatd.service"
 ln -sf /usr/lib/systemd/system/NetworkManager.service "$A/etc/systemd/system/multi-user.target.wants/NetworkManager.service"
 rm -f "$A/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" "$A/etc/systemd/system/sockets.target.wants/systemd-networkd.socket" 2>/dev/null || true
