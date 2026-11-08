@@ -1,0 +1,5 @@
+// the lock screen user and the live user may manage Wi-Fi without a password prompt, the first screens have no way to ask for one
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 && (subject.user === "greeter" || subject.user === "smof" || subject.isInGroup("wheel")))
+        return polkit.Result.YES;
+});

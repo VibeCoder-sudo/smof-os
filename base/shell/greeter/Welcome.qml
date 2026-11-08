@@ -7,7 +7,7 @@ import QtQuick
 Item {
     id: w
     signal tryIt()
-    property string mode: "choose"          // choose, disks, working, done, error
+    property string mode: "choose"          // choose, wifi, disks, working, done, error
     property var disks: []
     property int pick: -1                   // index of the chosen disk
     property real pct: 0
@@ -84,6 +84,10 @@ Item {
                 T { anchors.centerIn: parent; text: "Install Smof"; font.pixelSize: 24; w: 620; color: "#FFFFFF" }
                 MouseArea { anchors.fill: parent; onClicked: { w.mode = "disks"; w.disks = []; listP.running = true } } }
         }
+        Rectangle { visible: w.mode === "choose"; anchors.horizontalCenter: parent.horizontalCenter; width: 200; height: 50; radius: 25; color: "#1AFFFFFF"; border.color: "#33FFFFFF"
+            T { anchors.centerIn: parent; text: "Wi-Fi"; font.pixelSize: 18; w: 560; color: "#FFFFFF" }
+            MouseArea { anchors.fill: parent; onClicked: w.mode = "wifi" } }
+        WifiPane { visible: w.mode === "wifi"; width: parent.width; onBack: w.mode = "choose" }
         T { visible: w.mode === "choose"; anchors.horizontalCenter: parent.horizontalCenter; width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
             text: "Try Smof runs from memory and changes nothing on your computer. Install Smof puts it on a disk next to what is already there."; font.pixelSize: 15; color: "#8CFFFFFF" }
 
