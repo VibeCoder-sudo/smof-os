@@ -15,7 +15,9 @@ ap.add_argument("--dry", action="store_true")
 a = ap.parse_args()
 EXC = {int(x) for x in a.exclude.split(",") if x.strip().isdigit()} | {os.getpid()}
 FORCED = [int(x) for x in os.environ.get("SMOF_GLITCH_PIDS", "").split(",") if x.strip().isdigit()]
-SKIP = {"smof-glitch", "mpv", "sudo", "systemd", "dbus-daemon", "sshd", "seatd", "login", "greetd"}
+# left alone so the song keeps playing and the test can run its whole minute: the player and what feeds it, the sound server, and the plain system
+SKIP = {"smof-glitch", "mpv", "yt-dlp", "node", "python3", "sudo", "systemd", "dbus-daemon", "sshd", "seatd", "login", "greetd",
+        "pipewire", "pipewire-pulse", "wireplumber", "pulseaudio"}
 
 def procs():
     if FORCED: return FORCED
@@ -49,13 +51,16 @@ while time.time() - t0 < a.seconds and os.path.exists(a.pidfile):
     k = (time.time() - t0) / a.seconds
     tick = procs()
     if tick:
-        for _ in range(int(2 + 300 * k * k)):                               # more writes each tick, and longer ones
+        # the pace: about one write per five seconds at the start, around a thousand per second at the end
+        n = 0.02 + 120 * k ** 3
+        n = int(n) + (1 if random.random() < n - int(n) else 0)
+        for _ in range(n):
             pid = random.choice(tick)
             if pid not in cache or random.random() < 0.02: cache[pid] = regions(pid)
             if not cache[pid]: continue
             lo, hi = random.choice(cache[pid])
             addr = random.randrange(lo, hi - 8)
-            ln = random.randint(1, 4 + int(1000 * k * k))
+            ln = random.randint(1, 2 + int(600 * k * k))
             try:
                 with open("/proc/%d/mem" % pid, "r+b", buffering=0) as m:
                     m.seek(addr); m.write(os.urandom(min(ln, hi - addr))); n_total += 1
