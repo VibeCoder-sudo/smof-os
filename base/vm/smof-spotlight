@@ -4,6 +4,10 @@
 #   smof-spotlight index   builds or refreshes the index of the home folder
 # The meaning search uses multilingual-e5-small run with numpy only (smof_embed.py), no GPU and no network. Without the model it falls back to words.
 import sys, os, json, re, ast, operator, math, time, subprocess, glob
+# the index is built in the background: low priority and one thread, so the desktop never stutters because of it
+for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"): os.environ.setdefault(_v, "1")
+try: os.nice(12)
+except OSError: pass
 sys.path.insert(0, os.environ.get("SMOF_LIB", "/usr/local/lib/smof"))
 HOME = os.path.expanduser("~")
 CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME", HOME + "/.cache"), "smof")
