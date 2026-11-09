@@ -33,7 +33,7 @@ def start():
     mpv = os.environ.get("SMOF_MPV", "mpv")
     if shutil.which(mpv):
         args = [mpv, "--no-video", "--no-terminal", "--loop-file=inf"]
-        args += ["--ytdl-format=bestaudio", "--no-playlist", URL] if shutil.which("yt-dlp") else ["av://lavfi:sine=f=330:r=44100"]
+        args += ["--ytdl-format=bestaudio", URL] if shutil.which("yt-dlp") else ["av://lavfi:sine=f=330:r=44100"]
         p = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); pids.append(p.pid)
     helper = [os.environ.get("SMOF_GLITCH_MEM", "/usr/local/bin/smof-glitch-mem"), "--uid", str(os.getuid()), "--seconds", str(TOTAL), "--pidfile", PIDF,
               "--exclude", ",".join(str(x) for x in pids)]

@@ -8,7 +8,7 @@ arch=(any)
 url='https://github.com/VibeCoder-sudo/smof-os'
 license=(custom)
 depends=(wayfire quickshell foot greetd seatd networkmanager python python-numpy python-sentencepiece rsync wl-clipboard cliphist wtype grim slurp)
-optdepends=('mpv: music of the Beta Lab crash test' 'yt-dlp: music of the Beta Lab crash test' 'bluez-utils: Bluetooth' 'wlsunset: Night Light' 'wf-recorder: screen recording' 'ncnn: Smof upscaler')
+optdepends=('mpv: music of the Beta Lab crash test' 'yt-dlp: music of the Beta Lab crash test' 'nodejs: lets yt-dlp read YouTube' 'bluez-utils: Bluetooth' 'wlsunset: Night Light' 'wf-recorder: screen recording' 'ncnn: Smof upscaler')
 backup=()
 options=(!strip)
 

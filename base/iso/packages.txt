@@ -80,3 +80,4 @@ wf-recorder
 pacman-contrib
 mpv
 yt-dlp
+nodejs
