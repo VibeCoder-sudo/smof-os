@@ -31,6 +31,7 @@ FloatingWindow {
         { id: "travel", name: "Time Travel", icon: "calendar" },
         { id: "updates", name: "Software Update", icon: "cloudsun" },
         { id: "account", name: "Account", icon: "phone" },
+        { id: "beta", name: "Beta Lab", icon: "shield" },
         { id: "about", name: "About", icon: "notes" }
     ]
 
@@ -155,6 +156,15 @@ FloatingWindow {
         onExited: (code) => { win.upBusy = false; win.upLine = ""; win.upMsg = code === 0 ? "Smof is updated. Apps reload by themselves" : "The Smof update did not finish" }
     }
     function upDoCheck() { win.upChecking = true; win.upMsg = "Checking"; upCheck.running = true }
+
+    // Beta Lab: the crash test
+    property bool glSure: false
+    property bool glRunning: false
+    Process {
+        id: glP
+        command: ["/usr/local/bin/smof-glitch", "start"]
+        onExited: { win.glRunning = false; win.glSure = false }
+    }
 
     // ---- one helper for the small command line tools that answer with JSON ----
     component Cmd: Process {
@@ -810,6 +820,20 @@ FloatingWindow {
                     }
                 }
                 T { visible: win.snapSel !== "" && win.snapMsg !== ""; width: parent.width; text: win.snapMsg; color: Theme.i55; font.pixelSize: 14; wrapMode: Text.WordWrap }
+            }
+
+            // Beta Lab
+            Column {
+                visible: win.page === "beta"
+                width: parent.width; spacing: 18
+                Card {
+                    Row2 { label: "Crash test"; sub: "For one minute the screen and the sound fall apart more and more, bytes in the memory of your open programs are overwritten, then the computer crashes on purpose with a kernel panic. After that it stays stopped until you switch it off and on again."; last: false }
+                    Row2 { label: "Unsaved work will be lost"; sub: "Save your files first. Esc stops the test during the first 55 seconds. Disks are synced before the crash, but open programs will be damaged."
+                        Switch { on: win.glSure; onToggled: (v) => win.glSure = v } }
+                    Row2 { label: win.glRunning ? "Running" : "Start"; sub: "The music is Uwa!! So Temperate from the Undertale soundtrack. It is played from YouTube, so it needs the internet. Without it a plain tone plays."; last: true
+                        Btn { label: win.glRunning ? "Running" : "Start 60 second test"; danger: true
+                            onClicked: { if (win.glSure && !win.glRunning) { win.glRunning = true; glP.running = true } } } }
+                }
             }
 
             // Software Update

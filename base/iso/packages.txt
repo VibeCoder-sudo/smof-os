@@ -78,3 +78,5 @@ bluez-utils
 wlsunset
 wf-recorder
 pacman-contrib
+mpv
+yt-dlp
