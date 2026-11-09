@@ -147,6 +147,13 @@ FloatingWindow {
             if (o.line) win.upLine = o.line
             if (o.done) { win.upBusy = false; win.upMsg = o.ok ? "Updated. Some changes show after you sign in again" : "The update did not finish"; win.upLine = ""; upCheck.running = true } } catch (e) {} } }
     }
+    // only the Smof desktop package, small and quick: the right choice on the live image, where a whole system update would not fit in memory
+    Process {
+        id: upSmof
+        command: ["sudo", "-n", "pacman", "-Sy", "--noconfirm", "--overwrite", "*", "smof-shell"]
+        stdout: SplitParser { onRead: (line) => { if (line.trim() !== "") win.upLine = line.trim() } }
+        onExited: (code) => { win.upBusy = false; win.upLine = ""; win.upMsg = code === 0 ? "Smof is updated. Apps reload by themselves" : "The Smof update did not finish" }
+    }
     function upDoCheck() { win.upChecking = true; win.upMsg = "Checking"; upCheck.running = true }
 
     // ---- one helper for the small command line tools that answer with JSON ----
@@ -810,6 +817,7 @@ FloatingWindow {
                     Row2 { label: win.upMsg; sub: win.upBusy ? win.upLine : "Smof and the system packages come from the Smof repository"; last: true
                         Row { spacing: 8
                             Btn { visible: !win.upBusy; label: win.upChecking ? "Checking" : "Check"; onClicked: win.upDoCheck() }
+                            Btn { visible: !win.upBusy; label: "Update Smof"; onClicked: { win.upBusy = true; win.upMsg = "Updating Smof"; win.upLine = "Starting"; upSmof.running = true } }
                             Btn { visible: !win.upBusy && win.upList.length > 0; label: "Update all"; onClicked: { win.upBusy = true; win.upMsg = "Updating"; win.upLine = "Starting"; upRun.running = true } } }
                     }
                 }
