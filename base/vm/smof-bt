@@ -27,7 +27,25 @@ if c == "status": print(json.dumps(status()))
 elif c == "scan":
     ctl(["power", "on"]); subprocess.run([CTL, "--timeout", "6", "scan", "on"], capture_output=True, timeout=15); print(json.dumps(status()))
 elif c == "power" and len(a) > 1:
-    rc, o = ctl(["power", "on" if a[1] == "on" else "off"]); print(json.dumps({"ok": rc == 0, "error": "" if rc == 0 else o.strip()}))
+    if a[1] == "on":
+        # a soft block (software switch) is lifted first, a hard block (key or switch on the laptop) can only be told to the user
+        RF = os.environ.get("SMOF_RFKILL", "rfkill")
+        try: rk = subprocess.run([RF, "list", "bluetooth"], capture_output=True, text=True, timeout=5).stdout
+        except Exception: rk = ""
+        if "Hard blocked: yes" in rk:
+            print(json.dumps({"ok": False, "error": "Bluetooth is switched off by a key or a switch on the laptop. Turn it on there, then try again."})); sys.exit(0)
+        if "Soft blocked: yes" in rk:
+            for cmd in ([RF, "unblock", "bluetooth"], ["sudo", "-n", RF, "unblock", "bluetooth"]):
+                try:
+                    if subprocess.run(cmd, capture_output=True, timeout=8).returncode == 0: break
+                except Exception: pass
+            time.sleep(1)
+    rc, o = ctl(["power", "on" if a[1] == "on" else "off"])
+    err = ""
+    if rc != 0:
+        err = o.strip()
+        if "org.bluez.Error.Failed" in err: err = "Bluetooth could not start. It may be blocked, or the adapter has no firmware."
+    print(json.dumps({"ok": rc == 0, "error": err}))
 elif c in ("pair", "connect", "disconnect") and len(a) > 1:
     if c == "pair": ctl(["pair", a[1]], 40); ctl(["trust", a[1]]); c = "connect"
     rc, o = ctl([c, a[1]], 30); ok = "successful" in o.lower() or rc == 0 and "fail" not in o.lower()
