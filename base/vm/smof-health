@@ -43,7 +43,9 @@ while True:
     # disk: at most one warning an hour
     try:
         du = shutil.disk_usage("/")
-        if du.free < DISK_GB * 1073741824 and now - last["disk"] > (5 if FAST else 3600):
+        # the live image keeps changes in a small piece of memory, a warning about it would only confuse, and the system is not on a disk
+        live = os.path.exists("/var/lib/smof/live") and not os.environ.get("SMOF_DISK_GB")
+        if not live and du.free < DISK_GB * 1073741824 and now - last["disk"] > (5 if FAST else 3600):
             last["disk"] = now
             act("set", "health-disk", "--title", "Disk is almost full", "--sub", "Only " + gb(du.free) + " left", "--icon", P + "devices/drive-harddisk.svg",
                 "--size", "medium", "--important", "--ttl", "10", "--action", "Free up space=/usr/local/bin/smof-cleanup")
