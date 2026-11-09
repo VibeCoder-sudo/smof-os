@@ -1,0 +1,30 @@
+#!/usr/bin/python3 -I
+# smof-update-check : is there a newer Smof desktop package in the Smof repository? Needs no root and no pacman database, it reads the published
+# repository file directly. Prints one JSON line: {"ok": true, "installed": "...", "available": "...", "newer": true} or {"ok": false, "error": "..."}
+import json, io, os, re, subprocess, tarfile, urllib.request
+URL = os.environ.get("SMOF_REPO_DB", "https://github.com/VibeCoder-sudo/smof-os/releases/download/repo/smof.db")
+def vercmp(a, b):
+    try: return int(subprocess.run(["vercmp", a, b], capture_output=True, text=True, timeout=5).stdout.strip() or 0)
+    except Exception: return (a > b) - (a < b)
+try:
+    req = urllib.request.Request(URL, headers={"User-Agent": "smof-update-check"})
+    data = urllib.request.urlopen(req, timeout=15).read()
+except Exception as e:
+    print(json.dumps({"ok": False, "error": "No connection to the Smof repository"})); raise SystemExit(0)
+avail = ""
+try:
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as t:
+        for m in t.getmembers():
+            if m.isfile() and m.name.endswith("/desc") and re.match(r"smof-shell-\d", m.name):
+                d = t.extractfile(m).read().decode()
+                v = re.search(r"%VERSION%\n(\S+)", d)
+                if v: avail = v.group(1)
+except Exception:
+    print(json.dumps({"ok": False, "error": "The repository file could not be read"})); raise SystemExit(0)
+inst = ""
+try:
+    o = subprocess.run(["pacman", "-Q", "smof-shell"], capture_output=True, text=True, timeout=10).stdout.split()
+    if len(o) >= 2: inst = o[1]
+except Exception: pass
+newer = bool(avail) and (not inst or vercmp(avail, inst) > 0)
+print(json.dumps({"ok": bool(avail), "installed": inst, "available": avail, "newer": newer, "error": "" if avail else "No Smof package in the repository"}))

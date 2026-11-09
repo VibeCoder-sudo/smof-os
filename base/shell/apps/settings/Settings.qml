@@ -134,11 +134,16 @@ FloatingWindow {
     property bool upChecking: false
     Process {
         id: upCheck
-        command: ["sh", "-c", "checkupdates 2>/dev/null; true"]
+        command: ["/usr/local/bin/smof-update-check"]
         stdout: StdioCollector { onStreamFinished: {
-            var l = text.split("\n").filter(function (x) { return x.trim() !== "" }).map(function (x) { var m = x.match(/^(\S+) (\S+) -> (\S+)/); return m ? { name: m[1], from: m[2], to: m[3] } : null }).filter(function (x) { return x })
-            win.upList = l; win.upChecking = false
-            win.upMsg = l.length === 0 ? "Smof is up to date" : l.length + (l.length === 1 ? " update is" : " updates are") + " ready" } }
+            win.upChecking = false
+            try {
+                var o = JSON.parse(text)
+                if (!o.ok) { win.upList = []; win.upMsg = o.error || "Could not check"; return }
+                win.upList = o.newer ? [{ name: "Smof desktop", from: o.installed !== "" ? o.installed : "the version in this image", to: o.available }] : []
+                win.upMsg = o.newer ? "A Smof update is ready" : "Smof is up to date, version " + o.installed
+            } catch (e) { win.upList = []; win.upMsg = "Could not check" } } }
+        onExited: (code) => { if (code !== 0 && win.upChecking) { win.upChecking = false; win.upMsg = "The update check did not run" } }
     }
     Process {
         id: upRun
@@ -151,8 +156,11 @@ FloatingWindow {
     Process {
         id: upSmof
         command: ["sudo", "-n", "pacman", "-Sy", "--noconfirm", "--overwrite", "*", "smof-shell"]
+        property string err: ""
         stdout: SplitParser { onRead: (line) => { if (line.trim() !== "") win.upLine = line.trim() } }
-        onExited: (code) => { win.upBusy = false; win.upLine = ""; win.upMsg = code === 0 ? "Smof is updated. Apps reload by themselves" : "The Smof update did not finish" }
+        stderr: SplitParser { onRead: (line) => { if (line.trim() !== "") upSmof.err = line.trim() } }
+        onStarted: upSmof.err = ""
+        onExited: (code) => { win.upBusy = false; win.upLine = ""; win.upMsg = code === 0 ? "Smof is updated. Apps reload by themselves" : "The Smof update did not finish: " + (upSmof.err !== "" ? upSmof.err : "code " + code); upCheck.running = true }
     }
     function upDoCheck() { win.upChecking = true; win.upMsg = "Checking"; upCheck.running = true }
 
@@ -886,7 +894,7 @@ FloatingWindow {
                         Row { spacing: 8
                             Btn { visible: !win.upBusy; label: win.upChecking ? "Checking" : "Check"; onClicked: win.upDoCheck() }
                             Btn { visible: !win.upBusy; label: "Update Smof"; onClicked: { win.upBusy = true; win.upMsg = "Updating Smof"; win.upLine = "Starting"; upSmof.running = true } }
-                            Btn { visible: !win.upBusy && win.upList.length > 0; label: "Update all"; onClicked: { win.upBusy = true; win.upMsg = "Updating"; win.upLine = "Starting"; upRun.running = true } } }
+                          }
                     }
                 }
                 Card {
