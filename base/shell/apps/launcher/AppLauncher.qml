@@ -155,6 +155,7 @@ PanelWindow {
 
             // typed text: results of apps, files, clipboard and answers
             ListView {
+                SmoothWheel {}
                 id: rlist
                 visible: search.text.trim() !== ""
                 x: 20; y: 100
@@ -184,6 +185,8 @@ PanelWindow {
             }
 
             GridView {
+
+                SmoothWheel {}
                 id: grid
                 visible: search.text.trim() === ""
                 x: 20; y: 100

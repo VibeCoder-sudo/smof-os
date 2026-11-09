@@ -193,6 +193,7 @@ FloatingWindow {
                 T { text: "Recent pictures"; font.pixelSize: 14; w: 600; color: Theme.i62 }
             }
             Flickable {
+                SmoothWheel {}
                 x: 20; y: leftCol.y + leftCol.implicitHeight + 10; width: parent.width - 40; height: Math.max(0, parent.height - y - 16)
                 contentHeight: grid.implicitHeight; clip: true; boundsBehavior: Flickable.StopAtBounds
                 Flow {
@@ -241,6 +242,7 @@ FloatingWindow {
                 Pill { visible: jobs.count > 0; label: "Clear finished"; onClicked: win.clearDone() }
             }
             ListView {
+                SmoothWheel {}
                 x: 20; y: prev.y + prev.height + 56; width: parent.width - 40; height: parent.height - y - 16
                 clip: true; spacing: 6; boundsBehavior: Flickable.StopAtBounds
                 model: jobs

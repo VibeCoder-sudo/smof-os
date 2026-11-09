@@ -486,6 +486,8 @@ FloatingWindow {
             T { anchors.horizontalCenter: parent.horizontalCenter; text: "Opening the shelves..."; font.pixelSize: 18; color: Theme.i55 } }
 
         Flickable {
+
+            SmoothWheel {}
             id: fl
             visible: win.ready && win.viewKey === ""
             anchors.fill: parent
@@ -583,6 +585,7 @@ FloatingWindow {
 
         // ---- the page of one app ----
         Flickable {
+            SmoothWheel {}
             id: dfl
             visible: win.ready && win.viewKey !== ""
             anchors.fill: parent
@@ -687,7 +690,8 @@ FloatingWindow {
                 text: win.cur ? ((win.cur.action === "install" ? "Installing " : (win.cur.action === "uninstall" ? "Removing " : "Updating ")) + (win.cur.n !== "" ? win.pretty(win.cur.n) : (win.cur.src === "pacman" ? "the system" : "everything"))) : "Nothing is running" }
             T { id: lt2; x: 26; y: lt1.y + lt1.height + 2; font.pixelSize: 14; color: Theme.i55; text: win.cur ? win.stage + (win.prog >= 0 ? "  " + Math.round(win.prog * 100) + "%" : "") + (win.queue.length > 0 ? "   and " + win.queue.length + " waiting" : "") : "" }
             Rectangle { x: 26; y: lt2.y + lt2.height + 12; width: parent.width - 52; height: parent.height - y - 84; radius: 18; color: Theme.cardbg; clip: true
-                Flickable { id: lgf; anchors.fill: parent; anchors.margins: 12; contentHeight: lgt.implicitHeight; clip: true; boundsBehavior: Flickable.StopAtBounds
+                Flickable { SmoothWheel {}
+id: lgf; anchors.fill: parent; anchors.margins: 12; contentHeight: lgt.implicitHeight; clip: true; boundsBehavior: Flickable.StopAtBounds
                     onContentHeightChanged: contentY = Math.max(0, contentHeight - height)
                     Text { id: lgt; width: lgf.width; wrapMode: Text.WrapAnywhere; font.family: "monospace"; font.pixelSize: 12; color: Theme.i62; text: win.logLines.length ? win.logLines.join("\n") : "No output yet" } } }
             Row { anchors.right: parent.right; anchors.rightMargin: 24; anchors.bottom: parent.bottom; anchors.bottomMargin: 20; spacing: 10

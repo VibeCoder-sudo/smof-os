@@ -473,6 +473,7 @@ FloatingWindow {
         color: Theme.sidebg
         Behavior on color { ColorAnimation { duration: 300 } }
         Flickable {
+            SmoothWheel {}
             anchors.fill: parent; clip: true; boundsBehavior: Flickable.StopAtBounds
             contentWidth: width; contentHeight: sbc.implicitHeight + 28
             interactive: contentHeight > height
@@ -557,6 +558,7 @@ FloatingWindow {
             x: navRow.x + navRow.width + 12; anchors.verticalCenter: parent.verticalCenter
             width: Math.max(80, tools.x - x - 8); height: 40; radius: 20; color: Theme.cardbg; clip: true
             ListView {
+                SmoothWheel {}
                 id: crumbList
                 anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12
                 orientation: ListView.Horizontal
@@ -634,6 +636,8 @@ FloatingWindow {
         DropArea { anchors.fill: parent; onDropped: (d) => win.dropOn(win.cwd, d) }
 
         GridView {
+
+            SmoothWheel {}
             id: gv
             visible: win.grid
             anchors.fill: parent; anchors.margins: 10
@@ -688,6 +692,8 @@ FloatingWindow {
         }
 
         ListView {
+
+            SmoothWheel {}
             id: lv
             visible: !win.grid
             anchors.fill: parent; anchors.margins: 10

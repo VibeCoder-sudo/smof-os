@@ -420,6 +420,7 @@ FloatingWindow {
         color: Theme.sidebg
         Behavior on color { ColorAnimation { duration: 300 } }
         Flickable {
+            SmoothWheel {}
           anchors.fill: parent; contentHeight: sbcol.implicitHeight + 32; clip: true; boundsBehavior: Flickable.StopAtBounds
           Column {
             id: sbcol
@@ -442,6 +443,8 @@ FloatingWindow {
     }
 
     Flickable {
+
+        SmoothWheel {}
         id: fl
         x: side.width; width: parent.width - side.width; height: parent.height
         contentHeight: pageCol.implicitHeight + 64

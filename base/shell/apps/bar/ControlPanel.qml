@@ -103,6 +103,7 @@ PopupWindow {
         color: Theme.panelbg
         border.color: Theme.glassBorder
         Flickable {
+            SmoothWheel {}
             anchors.fill: parent; clip: true; boundsBehavior: Flickable.StopAtBounds
             contentWidth: width; contentHeight: body.implicitHeight + 32
             interactive: contentHeight > height
@@ -173,6 +174,7 @@ PopupWindow {
                 }
             }
             ListView {
+                SmoothWheel {}
                 id: clv
                 visible: pw.clipMode
                 width: parent.width

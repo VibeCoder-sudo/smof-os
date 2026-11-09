@@ -40,6 +40,7 @@ Column {
         T { anchors.centerIn: parent; text: "Turn Wi-Fi on"; font.pixelSize: 18; w: 620; color: Theme.onacc }
         MouseArea { anchors.fill: parent; onClicked: radioP.running = true } }
     Flickable {
+        SmoothWheel {}
         width: parent.width; height: Math.min(330, list.implicitHeight); contentHeight: list.implicitHeight; clip: true; boundsBehavior: Flickable.StopAtBounds
         Column {
             id: list; width: parent.width; spacing: 8

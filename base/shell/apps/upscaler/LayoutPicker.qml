@@ -97,6 +97,7 @@ Item {
         Rectangle {
             width: parent.width; height: lp.listHeight; radius: 22; color: Theme.cardbg; clip: true
             ListView {
+                SmoothWheel {}
                 id: lv
                 anchors.fill: parent; anchors.margins: 6
                 model: lp.shown
