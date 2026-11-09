@@ -1,0 +1,2 @@
+# the Smof settings may update the Smof desktop without a password prompt, the helper only installs the Smof package from the Smof repository
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/smof-update

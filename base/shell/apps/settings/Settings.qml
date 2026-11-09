@@ -155,12 +155,15 @@ FloatingWindow {
     // only the Smof desktop package, small and quick: the right choice on the live image, where a whole system update would not fit in memory
     Process {
         id: upSmof
-        command: ["sudo", "-n", "pacman", "-Sy", "--noconfirm", "--overwrite", "*", "smof-shell"]
-        property string err: ""
-        stdout: SplitParser { onRead: (line) => { if (line.trim() !== "") win.upLine = line.trim() } }
-        stderr: SplitParser { onRead: (line) => { if (line.trim() !== "") upSmof.err = line.trim() } }
-        onStarted: upSmof.err = ""
-        onExited: (code) => { win.upBusy = false; win.upLine = ""; win.upMsg = code === 0 ? "Smof is updated. Apps reload by themselves" : "The Smof update did not finish: " + (upSmof.err !== "" ? upSmof.err : "code " + code); upCheck.running = true }
+        command: ["sudo", "/usr/local/bin/smof-update"]
+        property string last: ""
+        stdout: SplitParser { onRead: (line) => { if (line.trim() !== "") { win.upLine = line.trim(); upSmof.last = line.trim() } } }
+        stderr: SplitParser { onRead: (line) => { if (line.trim() !== "") upSmof.last = line.trim() } }
+        onStarted: upSmof.last = ""
+        onExited: (code) => {
+            win.upBusy = false; win.upLine = ""
+            win.upMsg = code === 0 ? "Smof is updated. Apps reload by themselves" : "The Smof update did not finish: " + (upSmof.last !== "" ? upSmof.last.replace(/^error: /, "") : "code " + code)
+            upCheck.running = true }
     }
     function upDoCheck() { win.upChecking = true; win.upMsg = "Checking"; upCheck.running = true }
 

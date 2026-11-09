@@ -1,0 +1,54 @@
+#!/usr/bin/python3 -I
+# smof-update : installs the newest Smof desktop package from the Smof repository. Runs as root (the settings call it through sudo).
+# It takes the package straight from the published repository, so it needs no pacman database sync, no mirrors and no keyring, which is why it also
+# works on the live image right after boot. The package is checked against the size and the SHA-256 in the repository file before it is installed.
+# Prints plain lines for the settings page, the last one is "done" or "error: ...". SMOF_UPDATE_DRY=1 only downloads and inspects the package.
+import hashlib, io, os, re, subprocess, sys, tarfile, tempfile, urllib.request
+
+BASE = os.environ.get("SMOF_REPO_URL", "https://github.com/VibeCoder-sudo/smof-os/releases/download/repo")
+DRY = bool(os.environ.get("SMOF_UPDATE_DRY"))
+def say(t): print(t, flush=True)
+def fail(t): say("error: " + t); sys.exit(1)
+
+def get(url, limit=400 * 1024 * 1024):
+    req = urllib.request.Request(url, headers={"User-Agent": "smof-update"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return r.read(limit)
+
+say("Looking at the repository")
+try: db = get(BASE + "/smof.db", 5 * 1024 * 1024)
+except Exception: fail("no connection to the Smof repository")
+name = sha = ""; size = 0
+try:
+    with tarfile.open(fileobj=io.BytesIO(db), mode="r:*") as t:
+        best = None
+        for m in t.getmembers():
+            if m.isfile() and m.name.endswith("/desc") and re.match(r"smof-shell-\d", m.name):
+                d = t.extractfile(m).read().decode()
+                f = lambda k: (re.search(r"%%%s%%\n(\S+)" % k, d) or [None, ""])[1]
+                cand = (f("VERSION"), f("FILENAME"), f("SHA256SUM"), int(f("CSIZE") or 0))
+                if best is None or subprocess.run(["vercmp", cand[0], best[0]], capture_output=True, text=True).stdout.strip() == "1": best = cand
+        if best: _, name, sha, size = best
+except Exception: fail("the repository file could not be read")
+if not name: fail("no Smof package in the repository")
+say("Downloading " + name)
+try: pkg = get(BASE + "/" + name)
+except Exception: fail("the package could not be downloaded")
+if size and len(pkg) != size: fail("the downloaded package has the wrong size")
+if sha and hashlib.sha256(pkg).hexdigest() != sha: fail("the downloaded package is damaged")
+tmp = tempfile.mkdtemp(prefix="smof-update-")
+path = os.path.join(tmp, name)
+open(path, "wb").write(pkg)
+conf = os.path.join(tmp, "pacman.conf")
+open(conf, "w").write("[options]\nArchitecture = auto\nSigLevel = Optional TrustAll\nLocalFileSigLevel = Optional TrustAll\n")
+if DRY:
+    r = subprocess.run(["pacman", "--config", conf, "-Qpi", path], capture_output=True, text=True)
+    say(r.stdout.strip().splitlines()[0] if r.stdout.strip() else "no info")
+    say("done (dry run)"); sys.exit(0)
+say("Installing")
+p = subprocess.run(["pacman", "--config", conf, "-U", "--noconfirm", "--overwrite", "*", "-dd", path], capture_output=True, text=True)
+for l in (p.stdout + p.stderr).splitlines():
+    l = l.strip()
+    if l: say(l)
+if p.returncode != 0: fail((p.stderr.strip().splitlines() or ["pacman stopped"])[-1])
+say("done")

@@ -52,7 +52,7 @@ install -m 644 "$BASE/vm/fonts-smof.conf" "$STAGE/etc/fonts/conf.d/60-smof.conf"
 say "scripts"
 for s in smof-activity smof-askpass smof-bgapps smof-brew smof-cleanup smof-desktop smof-devwatch smof-display smof-downloads smof-fileops smof-files \
          smof-front smof-health smof-input smof-ipc smof-menubridge smof-pkg smof-session smof-settings smof-shell smof-shot smof-sound smof-store \
-         smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme smof-wifi smof-bt smof-night smof-spotlight smof-snap smof-record smof-update-check; do
+         smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme smof-wifi smof-bt smof-night smof-spotlight smof-snap smof-record smof-update-check smof-update; do
   [ -f "$BASE/vm/$s" ] || { echo "missing script $s"; exit 1; }
   install -m 755 "$BASE/vm/$s" "$STAGE/usr/local/bin/$s"
 done
@@ -71,7 +71,7 @@ rm -rf "$MT"
 for s in smof-oobe smof-splash smof-install; do install -m 755 "$BASE/vm/$s" "$STAGE/usr/local/sbin/$s"; done
 cp -r "$HERE/overlay/." "$STAGE/"
 chmod 755 "$STAGE/usr/local/bin/"* "$STAGE/usr/local/sbin/"*
-chmod 440 "$STAGE/etc/sudoers.d/smof"
+chmod 440 "$STAGE/etc/sudoers.d/smof" "$STAGE/etc/sudoers.d/smof-update"
 # the Smof package repository: updates of the desktop come with a plain pacman -Syu
 say "package repository"
 cp /etc/pacman.conf "$STAGE/etc/pacman.conf"
@@ -158,7 +158,7 @@ rm -f "$A/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" "
 python3 - "$P/profiledef.sh" "$A" <<'PY'
 import sys, os
 p = sys.argv[1]; s = open(p).read(); A = sys.argv[2]
-extra = '  ["/etc/sudoers.d/smof"]="0:0:440"\n'
+extra = '  ["/etc/sudoers.d/smof"]="0:0:440"\n  ["/etc/sudoers.d/smof-update"]="0:0:440"\n'
 for d in ("usr/local/bin", "usr/local/sbin"):
     for n in sorted(os.listdir(os.path.join(A, d))):
         if os.path.isfile(os.path.join(A, d, n)): extra += '  ["/%s/%s"]="0:0:755"\n' % (d, n)
