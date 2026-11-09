@@ -472,7 +472,12 @@ FloatingWindow {
         width: win.compact ? 64 : (win.width < 800 ? 170 : 210); height: parent.height
         color: Theme.sidebg
         Behavior on color { ColorAnimation { duration: 300 } }
+        Flickable {
+            anchors.fill: parent; clip: true; boundsBehavior: Flickable.StopAtBounds
+            contentWidth: width; contentHeight: sbc.implicitHeight + 28
+            interactive: contentHeight > height
         Column {
+            id: sbc
             x: 12; y: 14; width: parent.width - 24; spacing: 3
             T { visible: !win.compact; x: 10; text: "Places"; font.pixelSize: 13; w: 560; color: Theme.i55 }
             Repeater {
@@ -515,6 +520,7 @@ FloatingWindow {
                         MouseArea { id: ema; anchors.fill: parent; hoverEnabled: true; onClicked: win.ejectDrive(modelData) } }
                 }
             }
+        }
         }
     }
 

@@ -13,7 +13,9 @@ PopupWindow {
     anchor.edges: Edges.Bottom | Edges.Right
     anchor.gravity: Edges.Bottom | Edges.Left
     implicitWidth: 440
-    implicitHeight: body.implicitHeight + 32
+    // never taller than the screen below the bar, the content scrolls when it does not fit
+    readonly property real maxH: (pw.win && pw.win.screen ? pw.win.screen.height : 768) - 80
+    implicitHeight: Math.min(body.implicitHeight + 32, maxH)
     color: "transparent"
     visible: Ui.panelOpen
 
@@ -100,6 +102,10 @@ PopupWindow {
         radius: 30
         color: Theme.panelbg
         border.color: Theme.glassBorder
+        Flickable {
+            anchors.fill: parent; clip: true; boundsBehavior: Flickable.StopAtBounds
+            contentWidth: width; contentHeight: body.implicitHeight + 32
+            interactive: contentHeight > height
         Column {
             id: body
             x: 16; y: 16; width: parent.width - 32
@@ -268,6 +274,7 @@ PopupWindow {
                 PBtn { label: "Restart"; onClicked: { Ui.closeAll(); Quickshell.execDetached(["sudo", "-n", "/usr/bin/systemctl", "reboot"]) } }
                 PBtn { label: "Shut down"; danger: true; onClicked: { Ui.closeAll(); Quickshell.execDetached(["sudo", "-n", "/usr/bin/systemctl", "poweroff"]) } }
             }
+        }
         }
     }
 }
