@@ -143,6 +143,7 @@ ln -sf /etc/systemd/system/smof-live-home.service "$A/etc/systemd/system/multi-u
 # services: the desktop and the network. The default root autologin on the console is removed, greetd owns the first screen.
 rm -rf "$A/etc/systemd/system/getty@tty1.service.d"
 ln -sf /usr/lib/systemd/system/greetd.service "$A/etc/systemd/system/display-manager.service"
+ln -sf /etc/systemd/system/smof-hotfix.service "$A/etc/systemd/system/multi-user.target.wants/smof-hotfix.service"
 ln -sf /etc/systemd/system/smof-rawlog.service "$A/etc/systemd/system/multi-user.target.wants/smof-rawlog.service"
 ln -sf /usr/lib/systemd/system/bluetooth.service "$A/etc/systemd/system/multi-user.target.wants/bluetooth.service"
 ln -sf /usr/lib/systemd/system/seatd.service "$A/etc/systemd/system/multi-user.target.wants/seatd.service"
@@ -175,7 +176,7 @@ for l in "$A"/etc/systemd/system/*.wants/smof-*; do
   [ -L "$l" ] || continue
   [ -e "$A$(readlink "$l")" ] || { echo "BROKEN LINK $l"; bad=1; }
 done
-for f in /usr/local/bin/smof-rawlog /usr/local/sbin/smof-oobe /usr/local/sbin/smof-install; do
+for f in /usr/local/bin/smof-hotfix /usr/local/bin/smof-rawlog /usr/local/sbin/smof-oobe /usr/local/sbin/smof-install; do
   [ -x "$A$f" ] || { echo "NOT EXECUTABLE $f"; bad=1; }
 done
 ls -l "$A/etc/systemd/system" "$A/etc/systemd/system/multi-user.target.wants" "$A/etc/sudoers.d" || true

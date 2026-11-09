@@ -1,0 +1,8 @@
+#!/bin/sh
+# smof-hotfix : puts the files of smof/hotfix.tar from the boot partition over the live system, so a fix reaches the laptop in seconds without a new image.
+# The tar holds paths like usr/share/smof/greeter/Oobe.qml. Nothing happens when there is no such file.
+for d in /run/archiso/bootmnt /run/archiso/bootmnt/*; do
+  F="$d/smof/hotfix.tar"; [ -f "$F" ] || F="$d/hotfix.tar"
+  if [ -f "$F" ]; then tar -xf "$F" -C / --no-same-owner && echo "applied $F"; exit 0; fi
+done
+echo "no hotfix"

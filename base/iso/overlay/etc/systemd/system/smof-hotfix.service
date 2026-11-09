@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply the hotfix file from the boot partition
+After=local-fs.target
+Before=greetd.service display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/smof-hotfix
+
+[Install]
+WantedBy=multi-user.target
