@@ -133,11 +133,11 @@ Item {
             opacity: (root.step >= 1 && !root.oobe) ? 1 : 0
             property real drop: root.step >= 1 ? 0 : -24
             transform: Translate { y: clk.drop }
-            Behavior on drop { NumberAnimation { duration: 600; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: 500 } }
-            Behavior on x { SequentialAnimation { PauseAnimation { duration: root.login ? 350 : 0 } NumberAnimation { duration: 600; easing.type: Easing.OutCubic } } }
-            Behavior on y { SequentialAnimation { PauseAnimation { duration: root.login ? 350 : 0 } NumberAnimation { duration: 600; easing.type: Easing.OutCubic } } }
-            Behavior on scale { SequentialAnimation { PauseAnimation { duration: root.login ? 350 : 0 } NumberAnimation { duration: 600; easing.type: Easing.OutCubic } } }
+            Behavior on drop { NumberAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+            Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
+            Behavior on x { SequentialAnimation { PauseAnimation { duration: root.login ? 350 : 0 } NumberAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
+            Behavior on y { SequentialAnimation { PauseAnimation { duration: root.login ? 350 : 0 } NumberAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
+            Behavior on scale { SequentialAnimation { PauseAnimation { duration: root.login ? 350 : 0 } NumberAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
             T { id: tm; y: 0; width: clk.width; horizontalAlignment: Look.lockCenter ? Text.AlignHCenter : Text.AlignLeft; height: 120; verticalAlignment: Text.AlignVCenter; text: Qt.formatDateTime(clock.date, "HH:mm"); w: 385; font.pixelSize: 96; color: "#FFFFFF" }
             T { id: dt; visible: Look.lockDate; y: 106; width: clk.width; horizontalAlignment: Look.lockCenter ? Text.AlignHCenter : Text.AlignLeft; text: Qt.formatDateTime(clock.date, "dddd, MMMM d"); w: 470; font.pixelSize: 26; color: "#F2FFFFFF" }
         }
@@ -158,7 +158,7 @@ Item {
             x: 0; width: 1440; y: 984; horizontalAlignment: Text.AlignHCenter
             text: "Press any button to login"; font.pixelSize: 24; color: "#FFFFFF"
             opacity: root.inLock && root.step >= 9 ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 400 } }
+            Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             SequentialAnimation on scale { running: false }
         }
 
@@ -169,8 +169,8 @@ Item {
             opacity: (root.login && !root.oobe) ? 1 : 0
             property real rise: root.login ? 0 : 30
             transform: Translate { y: pinbox.rise }
-            Behavior on opacity { SequentialAnimation { PauseAnimation { duration: root.login ? 950 : 0 } NumberAnimation { duration: 600 } } }
-            Behavior on rise { SequentialAnimation { PauseAnimation { duration: root.login ? 950 : 0 } NumberAnimation { duration: 600; easing.type: Easing.OutCubic } } }
+            Behavior on opacity { SequentialAnimation { PauseAnimation { duration: root.login ? 950 : 0 } NumberAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
+            Behavior on rise { SequentialAnimation { PauseAnimation { duration: root.login ? 950 : 0 } NumberAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
             Loader {
                 x: 86; width: 128; height: 128
                 sourceComponent: root.userInfo.avatar ? photoAv : letterAv
@@ -189,12 +189,12 @@ Item {
                 x: (parent.width - width) / 2; y: 227 - height / 2; width: 52; height: 52
                 opacity: root.phase === "auth" || root.phase === "launch" ? 1 : 0
                 visible: opacity > 0
-                Behavior on opacity { NumberAnimation { duration: 250 } }
+                Behavior on opacity { NumberAnimation { duration: 375; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             }
             Row {
                 id: dots
                 opacity: root.phase === "auth" || root.phase === "launch" ? 0 : 1
-                Behavior on opacity { NumberAnimation { duration: 200 } }
+                Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
                 x: 87; y: 218; spacing: 18
                 Repeater {
                     model: 4
@@ -203,8 +203,8 @@ Item {
                         color: root.pin.length > index ? "#FFFFFF" : "transparent"
                         border.color: "#E6FFFFFF"; border.width: 2
                         scale: root.pin.length > index ? 1.15 : 1
-                        Behavior on scale { NumberAnimation { duration: 200 } }
-                        Behavior on color { ColorAnimation { duration: 200 } }
+                        Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
+                        Behavior on color { ColorAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
                     }
                 }
             }
@@ -228,5 +228,5 @@ Item {
 
     // launch fade: the lock screen goes to the same dark colour the session starts with, then the desktop fades in
     Rectangle { anchors.fill: parent; color: "#0F0D16"; opacity: root.phase === "launch" ? 1 : 0; visible: opacity > 0.001
-        Behavior on opacity { NumberAnimation { duration: 650; easing.type: Easing.InOutQuad } } }
+        Behavior on opacity { NumberAnimation { duration: 650; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
 }

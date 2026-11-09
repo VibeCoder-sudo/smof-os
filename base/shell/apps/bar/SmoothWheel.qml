@@ -6,8 +6,8 @@ WheelHandler {
     id: wh
     acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
     property real step: 72                       // pixels for one notch of a mouse wheel
-    property NumberAnimation ay: NumberAnimation { property: "contentY"; duration: 180; easing.type: Easing.OutCubic }
-    property NumberAnimation ax: NumberAnimation { property: "contentX"; duration: 180; easing.type: Easing.OutCubic }
+    property NumberAnimation ay: NumberAnimation { property: "contentY"; duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] }
+    property NumberAnimation ax: NumberAnimation { property: "contentX"; duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] }
     onWheel: (ev) => {
         var f = wh.parent
         if (!f) return

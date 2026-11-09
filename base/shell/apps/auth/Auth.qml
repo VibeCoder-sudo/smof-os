@@ -90,7 +90,7 @@ PanelWindow {
     onShownChanged: if (shown) { pw.forceActiveFocus() }
 
     // ---- look ----
-    Rectangle { id: veil; anchors.fill: parent; color: "#000000"; opacity: w.shown ? .52 : 0; Behavior on opacity { NumberAnimation { duration: 220 } } }
+    Rectangle { id: veil; anchors.fill: parent; color: "#000000"; opacity: w.shown ? .52 : 0; Behavior on opacity { NumberAnimation { duration: 330; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
     MouseArea { anchors.fill: parent; enabled: w.shown }
 
     Rectangle {
@@ -102,8 +102,8 @@ PanelWindow {
         border.color: Theme.glassBorder
         opacity: w.shown ? 1 : 0
         scale: w.shown ? 1 : .94
-        Behavior on opacity { NumberAnimation { duration: 200 } }
-        Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.2 } }
+        Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
+        Behavior on scale { NumberAnimation { duration: 360; easing.type: Easing.OutBack; easing.overshoot: 1.2 } }
         transform: Translate { id: tr; x: 0 }
         SequentialAnimation { id: shake
             NumberAnimation { target: tr; property: "x"; to: -14; duration: 60 }

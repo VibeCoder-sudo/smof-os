@@ -26,7 +26,7 @@ Item {
                     width: wp.width
                     height: wp.height
                     y: wp.depth * (index + 1) * 4
-                    Behavior on y { NumberAnimation { duration: 1100; easing.type: Easing.OutCubic } }
+                    Behavior on y { NumberAnimation { duration: 1100; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
                     Image {
                         mipmap: true
                         smooth: true
@@ -51,7 +51,7 @@ Item {
         anchors.fill: parent
         active: wp.mode === "dunes" && (!Theme.dark || opacity > 0.01)
         opacity: Theme.dark ? 0 : 1
-        Behavior on opacity { NumberAnimation { duration: 1200 } }
+        Behavior on opacity { NumberAnimation { duration: 1200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
         property string themeName: "light"
         sourceComponent: set
     }
@@ -60,7 +60,7 @@ Item {
         anchors.fill: parent
         active: wp.mode === "dunes" && (Theme.dark || opacity > 0.01)
         opacity: Theme.dark ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 1200 } }
+        Behavior on opacity { NumberAnimation { duration: 1200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
         property string themeName: "dark"
         sourceComponent: set
     }

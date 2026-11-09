@@ -363,7 +363,7 @@ FloatingWindow {
         width: Math.max(big ? 120 : 86, lt.implicitWidth + (j ? 54 : 36)); height: big ? 42 : 34
         opacity: room ? .55 : 1
         Rectangle { anchors.fill: parent; radius: height / 2; color: gb.filled ? Theme.acc : Theme.moonbg
-            Rectangle { anchors.fill: parent; radius: parent.radius; color: gb.filled ? "#000000" : Theme.acc; opacity: gma.pressed ? .18 : (gma.containsMouse ? (gb.filled ? .10 : .12) : 0); Behavior on opacity { NumberAnimation { duration: 100 } } } }
+            Rectangle { anchors.fill: parent; radius: parent.radius; color: gb.filled ? "#000000" : Theme.acc; opacity: gma.pressed ? .18 : (gma.containsMouse ? (gb.filled ? .10 : .12) : 0); Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } } }
         Row { anchors.centerIn: parent; spacing: 8
             Spin { visible: !!gb.j; anchors.verticalCenter: parent.verticalCenter; col: gb.filled ? Theme.onacc : Theme.acc }
             T { id: lt; anchors.verticalCenter: parent.verticalCenter; text: gb.label; font.pixelSize: gb.big ? 17 : 15; w: 650; color: gb.filled ? Theme.onacc : Theme.acc } }
@@ -374,7 +374,7 @@ FloatingWindow {
         property var e: null
         property int rank: 0
         width: parent ? parent.width : 400; height: 78
-        Rectangle { anchors.fill: parent; anchors.margins: 2; radius: 20; color: Theme.acc; opacity: arma.containsMouse ? .08 : 0; Behavior on opacity { NumberAnimation { duration: 100 } } }
+        Rectangle { anchors.fill: parent; anchors.margins: 2; radius: 20; color: Theme.acc; opacity: arma.containsMouse ? .08 : 0; Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
         T { visible: ar.rank > 0; x: 10; anchors.verticalCenter: parent.verticalCenter; width: 26; horizontalAlignment: Text.AlignHCenter; text: ar.rank; font.pixelSize: 18; w: 600; color: Theme.i55 }
         Tile { id: art; x: ar.rank > 0 ? 44 : 12; anchors.verticalCenter: parent.verticalCenter; n: ar.e ? ar.e.n : ""; size: 54 }
         Column { x: art.x + 66; anchors.verticalCenter: parent.verticalCenter; width: parent.width - art.x - 66 - gbtn.width - 24; spacing: 2
@@ -416,7 +416,7 @@ FloatingWindow {
                     required property var modelData
                     width: parent.width; height: 44
                     readonly property bool cur: win.viewKey === "" && win.page === modelData.id
-                    Rectangle { anchors.fill: parent; radius: 16; color: Theme.acc; opacity: cur ? 1 : (sma.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 120 } } }
+                    Rectangle { anchors.fill: parent; radius: 16; color: Theme.acc; opacity: cur ? 1 : (sma.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                     T { x: win.compact ? 0 : 16; width: win.compact ? parent.width : implicitWidth; horizontalAlignment: win.compact ? Text.AlignHCenter : Text.AlignLeft; anchors.verticalCenter: parent.verticalCenter; text: win.compact ? modelData.name.charAt(0) : modelData.name; font.pixelSize: 17; w: cur ? 650 : 480; color: cur ? Theme.onacc : Theme.ink }
                     Rectangle { visible: modelData.id === "updates" && win.outCount > 0 && !win.compact; anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter
                         width: Math.max(22, ub.implicitWidth + 12); height: 22; radius: 11; color: cur ? Theme.onacc : Theme.acc
@@ -432,7 +432,7 @@ FloatingWindow {
                     required property var modelData
                     width: parent.width; height: 42
                     readonly property bool cur: win.viewKey === "" && win.page === "cat:" + modelData.id
-                    Rectangle { anchors.fill: parent; radius: 16; color: Theme.acc; opacity: cur ? 1 : (cma2.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 120 } } }
+                    Rectangle { anchors.fill: parent; radius: 16; color: Theme.acc; opacity: cur ? 1 : (cma2.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                     Rectangle { x: win.compact ? (parent.width - 12) / 2 : 14; anchors.verticalCenter: parent.verticalCenter; width: 12; height: 12; radius: 6; color: Qt.hsla(modelData.tint, Theme.dark ? 0.65 : 0.55, Theme.dark ? 0.7 : 0.5, 1); border.color: cur ? Theme.onacc : "transparent"; border.width: 2 }
                     T { visible: !win.compact; x: 38; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 46; elide: Text.ElideRight; text: modelData.name; font.pixelSize: 16; w: cur ? 650 : 480; color: cur ? Theme.onacc : Theme.ink }
                     MouseArea { id: cma2; anchors.fill: parent; hoverEnabled: true; onClicked: win.go("cat:" + modelData.id) }
@@ -670,7 +670,7 @@ FloatingWindow {
                     text: win.stage + (win.prog >= 0 ? "  " + Math.round(win.prog * 100) + "%" : "") }
                 Item { visible: win.cur !== null; width: parent.width; height: 8
                     Rectangle { anchors.fill: parent; radius: 4; color: Theme.i12; clip: true
-                        Rectangle { visible: win.prog >= 0; height: parent.height; radius: 4; color: Theme.acc; width: parent.width * win.prog; Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } } }
+                        Rectangle { visible: win.prog >= 0; height: parent.height; radius: 4; color: Theme.acc; width: parent.width * win.prog; Behavior on width { NumberAnimation { duration: 375; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
                         Rectangle { id: slide; visible: win.prog < 0; width: parent.width * 0.3; height: parent.height; radius: 4; color: Theme.acc
                             SequentialAnimation on x { running: slide.visible && win.cur !== null; loops: Animation.Infinite
                                 NumberAnimation { from: -slide.width; to: slide.parent.width; duration: 1100; easing.type: Easing.InOutSine } } } } } } }

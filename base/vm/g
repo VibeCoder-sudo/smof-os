@@ -1,0 +1,7 @@
+#!/bin/bash
+# ./g 'command' runs a command as root in the VM over ssh; ./g -u 'command' runs it as mj
+cd "$(dirname "$0")"
+H=$(cat ip.txt)
+O="-i id_mjos -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8 -o LogLevel=ERROR"
+if [ "$1" = "-u" ]; then shift; exec ssh $O mj@$H "$@"; fi
+exec ssh $O root@$H "$@"

@@ -91,7 +91,7 @@ ShellRoot {
         Item {
             anchors.fill: parent
             opacity: Ui.entered ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 1000; easing.type: Easing.InOutQuad } }
+            Behavior on opacity { NumberAnimation { duration: 1000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             Item {
                 width: 1440; height: 1024; anchors.centerIn: parent
                 scale: Math.max(parent.width / 1440, parent.height / 1024)
@@ -100,7 +100,7 @@ ShellRoot {
             Rectangle { anchors.fill: parent; color: "#000000"; opacity: Look.wpDim }
         }
         DesktopIcons { id: icons; anchors.fill: parent; opacity: Ui.entered ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 1000; easing.type: Easing.InOutQuad } }
+            Behavior on opacity { NumberAnimation { duration: 1000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             onMenuRequested: (x, y, e) => wallWin.openMenuWith(x, y, e) }
     }
 

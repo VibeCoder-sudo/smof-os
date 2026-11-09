@@ -69,8 +69,8 @@ FocusScope {
         width: pt.implicitWidth + 64; height: 56
         opacity: enabled2 ? 1 : .45
         Rectangle { anchors.fill: parent; radius: 28; color: pl.filled ? Theme.acc : Theme.glass2; border.color: pl.filled ? "transparent" : Theme.glassBorder
-            Rectangle { anchors.fill: parent; radius: 28; color: pl.filled ? Theme.onacc : Theme.acc; opacity: pma.containsMouse ? .12 : 0; Behavior on opacity { NumberAnimation { duration: 100 } } }
-            scale: pma.pressed ? .97 : 1; Behavior on scale { NumberAnimation { duration: 100 } } }
+            Rectangle { anchors.fill: parent; radius: 28; color: pl.filled ? Theme.onacc : Theme.acc; opacity: pma.containsMouse ? .12 : 0; Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
+            scale: pma.pressed ? .97 : 1; Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
         T { id: pt; anchors.centerIn: parent; text: pl.label; w: 560; font.pixelSize: 20; color: pl.filled ? Theme.onacc : Theme.ink }
         MouseArea { id: pma; anchors.fill: parent; hoverEnabled: true; enabled: pl.enabled2; onClicked: pl.clicked() }
     }
@@ -87,13 +87,13 @@ FocusScope {
             visible: o.step > 0 && o.step < 5
             Repeater { model: 4
                 Rectangle { width: index + 1 === o.step ? 28 : 10; height: 10; radius: 5; color: index + 1 <= o.step ? Theme.acc : Theme.i12
-                    Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } } } }
+                    Behavior on width { NumberAnimation { duration: 375; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } } }
         }
 
         // 0 hello
         Item {
             anchors.fill: parent; visible: opacity > 0; opacity: o.step === 0 ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 300 } }
+            Behavior on opacity { NumberAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             T { id: hw; anchors.horizontalCenter: parent.horizontalCenter; y: 110; text: o.hellos[o.hi]; font.pixelSize: 110; w: 420
                 SequentialAnimation on opacity { running: o.step === 0; loops: Animation.Infinite
                     NumberAnimation { from: 0; to: 1; duration: 500 } PauseAnimation { duration: 1300 } NumberAnimation { from: 1; to: 0; duration: 400 } } }
@@ -104,7 +104,7 @@ FocusScope {
         // 1 name
         Item {
             anchors.fill: parent; visible: opacity > 0; opacity: o.step === 1 ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 300 } }
+            Behavior on opacity { NumberAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 100; text: "What should we call you?"; font.pixelSize: 38; w: 560 }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 156; text: "This name is shown on the lock screen"; font.pixelSize: 20; color: Theme.i62 }
             Rectangle {
@@ -128,7 +128,7 @@ FocusScope {
         // 2 pin
         Item {
             anchors.fill: parent; visible: opacity > 0; opacity: o.step === 2 ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 300 } }
+            Behavior on opacity { NumberAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 100; text: o.confirming ? "Repeat your PIN" : "Create a PIN"; font.pixelSize: 38; w: 560 }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 156; text: o.hint !== "" ? o.hint : "Four digits, you use it to sign in"; font.pixelSize: 20; color: o.hint !== "" ? (Theme.dark ? "#FFB59E" : "#B3401C") : Theme.i62 }
             Row {
@@ -137,8 +137,8 @@ FocusScope {
                 Repeater { model: 4
                     Rectangle { width: 26; height: 26; radius: 13; color: o.pinNow.length > index ? Theme.acc : "transparent"; border.width: 3; border.color: o.pinNow.length > index ? Theme.acc : Theme.i5
                         scale: o.pinNow.length > index ? 1.12 : 1
-                        Behavior on scale { NumberAnimation { duration: 180 } }
-                        Behavior on color { ColorAnimation { duration: 180 } } } }
+                        Behavior on scale { NumberAnimation { duration: 270; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
+                        Behavior on color { ColorAnimation { duration: 270; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } } }
                 SequentialAnimation { id: shake
                     NumberAnimation { target: pdots; property: "x"; to: pdots.x - 14; duration: 80 }
                     NumberAnimation { target: pdots; property: "x"; to: pdots.x + 14; duration: 80 }
@@ -150,7 +150,7 @@ FocusScope {
         // 3 look
         Item {
             anchors.fill: parent; visible: opacity > 0; opacity: o.step === 3 ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 300 } }
+            Behavior on opacity { NumberAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 100; text: "Pick your look"; font.pixelSize: 38; w: 560 }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 156; text: "You can change it any time from the panel"; font.pixelSize: 20; color: Theme.i62 }
             Row {
@@ -169,7 +169,7 @@ FocusScope {
         // 4 keyboard
         Item {
             anchors.fill: parent; visible: opacity > 0; opacity: o.step === 4 ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 300 } }
+            Behavior on opacity { NumberAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 80; text: "Your keyboard"; font.pixelSize: 38; w: 560 }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 134; text: "Add every language you type in, you can change it later in Settings"; font.pixelSize: 20; color: Theme.i62 }
             LayoutPicker { id: kb; x: (parent.width - width) / 2; y: 185; width: 640; listHeight: 110 }
@@ -181,8 +181,8 @@ FocusScope {
         // 4 working and 5 done
         Item {
             anchors.fill: parent; visible: opacity > 0; opacity: o.step >= 5 ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 300 } }
-            Spinner { anchors.horizontalCenter: parent.horizontalCenter; y: 150; width: 84; height: 84; opacity: o.step === 5 ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 250 } } }
+            Behavior on opacity { NumberAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
+            Spinner { anchors.horizontalCenter: parent.horizontalCenter; y: 150; width: 84; height: 84; opacity: o.step === 5 ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 375; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 280; text: o.step === 5 ? "Setting things up" : "You are all set"; font.pixelSize: 38; w: 560 }
             T { anchors.horizontalCenter: parent.horizontalCenter; y: 340; text: o.step === 5 ? "Just a moment" : "Hello, " + o.nameText.trim(); font.pixelSize: 22; color: Theme.i62 }
         }

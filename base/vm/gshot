@@ -1,0 +1,6 @@
+#!/bin/bash
+# ./gshot name : screenshot of the lock screen (greeter session) into the scratchpad
+cd "$(dirname "$0")"
+N=${1:-greeter}
+./g "su greeter -s /bin/sh -c 'cd /tmp; XDG_RUNTIME_DIR=/run/user/966 WAYLAND_DISPLAY=wayland-1 grim -s 0.6 /tmp/g.png'"
+scp -q -i id_mjos -o BatchMode=yes -o LogLevel=ERROR root@$(cat ip.txt):/tmp/g.png /private/tmp/claude-501/-Users-belousovkonstantin-Smof-1/bc81849e-e8b1-4426-8683-2dc77dff415d/scratchpad/$N.png

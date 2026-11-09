@@ -122,7 +122,7 @@ Item {
 
         T { visible: w.mode === "working"; text: "Installing Smof"; font.pixelSize: 40; w: 600; color: "#FFFFFF" }
         Rectangle { visible: w.mode === "working"; width: parent.width; height: 10; radius: 5; color: "#26FFFFFF"
-            Rectangle { width: parent.width * w.pct / 100; height: parent.height; radius: 5; color: Theme.acc; Behavior on width { NumberAnimation { duration: 300 } } } }
+            Rectangle { width: parent.width * w.pct / 100; height: parent.height; radius: 5; color: Theme.acc; Behavior on width { NumberAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } } }
         T { visible: w.mode === "working"; text: w.stepText; font.pixelSize: 17; color: "#B8FFFFFF" }
         T { visible: w.mode === "working"; text: "Please do not turn the computer off."; font.pixelSize: 14; color: "#8CFFFFFF" }
 

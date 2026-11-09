@@ -162,7 +162,7 @@ FloatingWindow {
         id: dropAll
         anchors.fill: parent
         onDropped: (d) => { if (d.hasUrls) { d.acceptProposedAction(); win.addPaths(win.urlPaths(d.urls)) } }
-        Rectangle { anchors.fill: parent; color: Theme.acc; opacity: dropAll.containsDrag ? .12 : 0; Behavior on opacity { NumberAnimation { duration: 120 } } }
+        Rectangle { anchors.fill: parent; color: Theme.acc; opacity: dropAll.containsDrag ? .12 : 0; Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
     }
 
     Row {

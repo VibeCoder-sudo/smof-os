@@ -467,7 +467,7 @@ PanelWindow {
                             radius: 14
                             color: Theme.acc
                             opacity: (!modelData.disabled && mm.containsMouse) ? .16 : 0
-                            Behavior on opacity { NumberAnimation { duration: 100 } }
+                            Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
                         }
                         T {
                             visible: !modelData.sep
@@ -560,7 +560,7 @@ PanelWindow {
         width: dock.ts; height: dock.ts
         scale: ma.pressed ? .94 : (ma.containsMouse ? 1.16 : 1)
         opacity: (dragging && !settling) ? 0 : (dim ? .55 : 1)
-        Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
         Behavior on opacity { NumberAnimation { duration: tile.out ? 90 : 200 } }
         property bool running: false
         property string iconUrl: ""
@@ -575,7 +575,7 @@ PanelWindow {
         }
         Rectangle { visible: tile.running || tile.active; anchors.horizontalCenter: parent.horizontalCenter; anchors.top: parent.bottom; anchors.topMargin: 3
             width: tile.active ? 14 : 5; height: 5; radius: 2.5; color: Theme.dark ? "#F4F0FF" : "#1B1230"; opacity: tile.active ? 1 : .75
-            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } } }
+            Behavior on width { NumberAnimation { duration: 270; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
         // drag to reorder: the tile follows the pointer, and where it is let go decides its new place
         property bool reorderable: false
         property bool dragging: false
@@ -587,9 +587,9 @@ PanelWindow {
         signal dropped(real rowX)
         signal droppedOut(real gx, real gy)
         signal dragMoved(real rowX, bool out)
-        Behavior on shift { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
-        Behavior on dragDx { enabled: tile.settling; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-        Behavior on dragDy { enabled: tile.settling; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+        Behavior on shift { NumberAnimation { duration: 170; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+        Behavior on dragDx { enabled: tile.settling; NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+        Behavior on dragDy { enabled: tile.settling; NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
         transform: Translate { x: tile.dragDx + tile.shift; y: tile.dragDy }
         z: (dragging || settling) ? 5 : 0
         property var settleDone: null
@@ -637,19 +637,19 @@ PanelWindow {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: dock.shown ? 24 : -120
-        Behavior on anchors.bottomMargin { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+        Behavior on anchors.bottomMargin { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
         HoverHandler { onHoveredChanged: { if (dock.covered) { if (hovered) { dock.reveal = true; dhideT.stop() } else dhideT.restart() } } }
         width: row.implicitWidth + 28 + (dock.extIns >= 0 ? dock.slotW : 0) - (dock.removeIdx >= 0 ? dock.slotW : 0)
         height: dock.ts + 28
         radius: height * 0.4
         opacity: Ui.entered ? 1 : 0
-        Behavior on opacity { SequentialAnimation { PauseAnimation { duration: 600 } NumberAnimation { duration: 700; easing.type: Easing.OutCubic } } }
+        Behavior on opacity { SequentialAnimation { PauseAnimation { duration: 600 } NumberAnimation { duration: 700; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
         color: Theme.glass
         border.color: dock.hoverTarget === "pill" ? Theme.acc : Theme.glassBorder
         border.width: dock.hoverTarget === "pill" ? 2 : 1
-        Behavior on color { ColorAnimation { duration: 400 } }
-        Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
-        Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
+        Behavior on width { NumberAnimation { duration: 375; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+        Behavior on height { NumberAnimation { duration: 375; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
         Row {
             id: row
             anchors.centerIn: parent
@@ -760,7 +760,7 @@ PanelWindow {
                 icon: dock.stackIcon
                 iconUrl: "file:///usr/share/icons/Papirus/64x64/places/" + dock.stackIcon + ".svg"
                 onClicked: { if (stackPop.visible) { stackPop.visible = false } else { dock.closeMenu(); stackP.running = true; stackPop.visible = true } }
-                Rectangle { anchors.fill: parent; radius: width / 3; color: Theme.acc; opacity: (stackDrop.containsDrag || dock.hoverTarget === "stack") ? .3 : 0; Behavior on opacity { NumberAnimation { duration: 120 } } }
+                Rectangle { anchors.fill: parent; radius: width / 3; color: Theme.acc; opacity: (stackDrop.containsDrag || dock.hoverTarget === "stack") ? .3 : 0; Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                 DropArea { id: stackDrop; anchors.fill: parent
                     onDropped: (d) => {
                         var ps = []
@@ -776,7 +776,7 @@ PanelWindow {
                 iconUrl: "file:///usr/share/icons/Papirus/64x64/places/" + (dock.trashFull ? "user-trash-full" : "user-trash") + ".svg"
                 onClicked: dock.openTrash()
                 onRightClicked: dock.openMenu(this, dock.trashMenu())
-                Rectangle { anchors.fill: parent; radius: width / 3; color: Theme.acc; opacity: (trashDrop.containsDrag || dock.hoverTarget === "trash") ? .3 : 0; Behavior on opacity { NumberAnimation { duration: 120 } } }
+                Rectangle { anchors.fill: parent; radius: width / 3; color: Theme.acc; opacity: (trashDrop.containsDrag || dock.hoverTarget === "trash") ? .3 : 0; Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                 DropArea { id: trashDrop; anchors.fill: parent; onDropped: (d) => dock.dropToTrash(d.urls) }
             }
         }

@@ -72,10 +72,19 @@ def fast_call(path, method, data=None):
 DUR = 0.26
 def ease(t): return 1 - (1 - t) ** 3
 
+def smooth_plugin():
+    # with the smooth-geometry plugin the compositor glides a window to its new place by itself, so the tiler only sends the final rectangle
+    try: return "smooth-geometry" in open(os.path.expanduser("~/.config/wayfire.ini")).read().split("[autostart]")[0]
+    except Exception: return False
+
 def animate(path, moves):
     """moves: list of (view id, from geometry, to geometry). Windows glide to their zones."""
     moves = [m for m in moves if any(abs(m[1][k] - m[2][k]) >= 2 for k in ("x", "y", "width", "height"))]
     if not moves: return
+    if smooth_plugin():
+        for vid, a, b in moves:
+            fast_call(path, "window-rules/configure-view", {"id": vid, "geometry": {k: int(round(b[k])) for k in ("x", "y", "width", "height")}})
+        return
     t0 = time.time()
     while True:
         t = (time.time() - t0) / DUR

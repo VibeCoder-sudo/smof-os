@@ -31,7 +31,6 @@ FloatingWindow {
         { id: "travel", name: "Time Travel", icon: "calendar" },
         { id: "updates", name: "Software Update", icon: "cloudsun" },
         { id: "account", name: "Account", icon: "phone" },
-        { id: "beta", name: "Beta Lab", icon: "shield" },
         { id: "about", name: "About", icon: "notes" }
     ]
 
@@ -156,15 +155,6 @@ FloatingWindow {
         onExited: (code) => { win.upBusy = false; win.upLine = ""; win.upMsg = code === 0 ? "Smof is updated. Apps reload by themselves" : "The Smof update did not finish" }
     }
     function upDoCheck() { win.upChecking = true; win.upMsg = "Checking"; upCheck.running = true }
-
-    // Beta Lab: the crash test
-    property bool glSure: false
-    property bool glRunning: false
-    Process {
-        id: glP
-        command: ["/usr/local/bin/smof-glitch", "start"]
-        onExited: { win.glRunning = false; win.glSure = false }
-    }
 
     // ---- one helper for the small command line tools that answer with JSON ----
     component Cmd: Process {
@@ -305,7 +295,7 @@ FloatingWindow {
         height: col.implicitHeight
         radius: 20
         color: Theme.cardbg
-        Behavior on color { ColorAnimation { duration: 300 } }
+        Behavior on color { ColorAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
         Column { id: col; width: parent.width }
     }
     component Row2: Item {
@@ -340,8 +330,8 @@ FloatingWindow {
         property bool on: false
         signal toggled(bool v)
         width: 54; height: 32
-        Rectangle { anchors.fill: parent; radius: 16; color: sw.on ? Theme.acc : Theme.i12; Behavior on color { ColorAnimation { duration: 180 } } }
-        Rectangle { width: 26; height: 26; radius: 13; y: 3; x: sw.on ? 25 : 3; color: sw.on ? Theme.onacc : (Theme.dark ? "#C9C0E6" : "#FFFFFF"); Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } } }
+        Rectangle { anchors.fill: parent; radius: 16; color: sw.on ? Theme.acc : Theme.i12; Behavior on color { ColorAnimation { duration: 270; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
+        Rectangle { width: 26; height: 26; radius: 13; y: 3; x: sw.on ? 25 : 3; color: sw.on ? Theme.onacc : (Theme.dark ? "#C9C0E6" : "#FFFFFF"); Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
         MouseArea { anchors.fill: parent; onClicked: sw.toggled(!sw.on) }
     }
     component Seg: Item {
@@ -351,7 +341,7 @@ FloatingWindow {
         signal picked(int i)
         width: options.length * 100 + 6; height: 38
         Rectangle { anchors.fill: parent; radius: 19; color: Theme.i12 }
-        Rectangle { x: 3 + sg.index * 100; y: 3; width: 100; height: 32; radius: 16; color: Theme.acc; Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } } }
+        Rectangle { x: 3 + sg.index * 100; y: 3; width: 100; height: 32; radius: 16; color: Theme.acc; Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
         Row {
             x: 3; y: 3
             Repeater {
@@ -428,7 +418,7 @@ FloatingWindow {
         id: side
         width: win.width < 760 ? 190 : 230; height: parent.height
         color: Theme.sidebg
-        Behavior on color { ColorAnimation { duration: 300 } }
+        Behavior on color { ColorAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
         Flickable {
             SmoothWheel {}
           anchors.fill: parent; contentHeight: sbcol.implicitHeight + 32; clip: true; boundsBehavior: Flickable.StopAtBounds
@@ -441,7 +431,7 @@ FloatingWindow {
                     required property var modelData
                     width: parent.width; height: 44
                     readonly property bool cur: win.page === modelData.id
-                    Rectangle { anchors.fill: parent; radius: 14; color: Theme.acc; opacity: cur ? 1 : (pma.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 120 } } }
+                    Rectangle { anchors.fill: parent; radius: 14; color: Theme.acc; opacity: cur ? 1 : (pma.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                     Image { x: 14; anchors.verticalCenter: parent.verticalCenter; width: 22; height: 22; sourceSize: Qt.size(66, 66)
                         source: "file:///usr/share/smof/icons/" + modelData.icon + (cur ? (Theme.dark ? "" : "-d") : Theme.sfx) + ".svg" }
                     T { x: 48; anchors.verticalCenter: parent.verticalCenter; text: modelData.name; w: cur ? 600 : 460; font.pixelSize: 17; color: cur ? Theme.onacc : Theme.ink }
@@ -472,7 +462,12 @@ FloatingWindow {
 
             // Wallpaper
             Column {
+                id: pg_wallpaper
                 visible: win.page === "wallpaper"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_wallpaper.appear) * 18 }
                 width: parent.width; spacing: 14
                 T { text: "Desktop"; font.pixelSize: 17; w: 600; color: Theme.acc }
                 Flow {
@@ -504,7 +499,12 @@ FloatingWindow {
 
             // Desktop
             Column {
+                id: pg_desktop
                 visible: win.page === "desktop"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_desktop.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "24 hour clock"; sub: "In the top bar"
@@ -534,7 +534,12 @@ FloatingWindow {
 
             // Lock screen
             Column {
+                id: pg_lockscreen
                 visible: win.page === "lockscreen"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_lockscreen.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "Clock size"; sub: "The time on the lock screen"
@@ -549,7 +554,12 @@ FloatingWindow {
 
             // Appearance
             Column {
+                id: pg_appearance
                 visible: win.page === "appearance"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_appearance.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "Theme"; sub: "Light or dark windows, panels and wallpaper"
@@ -568,7 +578,12 @@ FloatingWindow {
 
             // Display
             Column {
+                id: pg_display
                 visible: win.page === "display"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_display.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "Brightness"; sub: "Dims the whole screen"
@@ -618,7 +633,12 @@ FloatingWindow {
 
             // Keyboard
             Column {
+                id: pg_keyboard
                 visible: win.page === "keyboard"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_keyboard.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "System language"; sub: "English for now, more languages are coming"; last: true; Val { text: "English" } }
@@ -633,7 +653,12 @@ FloatingWindow {
 
             // Windows
             Column {
+                id: pg_windows
                 visible: win.page === "windows"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_windows.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "Window zones"; sub: "A second window moves the first to the left half and takes the right half. More windows share the screen in zones"; last: true
@@ -660,7 +685,12 @@ FloatingWindow {
 
             // Notifications
             Column {
+                id: pg_notifications
                 visible: win.page === "notifications"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_notifications.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "Focus"; sub: "Hold back pop-ups, they still land in the panel"
@@ -680,7 +710,12 @@ FloatingWindow {
 
             // Network
             Column {
+                id: pg_network
                 visible: win.page === "network"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_network.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "Wi-Fi"; sub: win.wOk ? (win.wSsid !== "" ? "Connected to " + win.wSsid : (win.wRadio ? "Not connected" : "Off")) : win.wErr; last: true
@@ -729,7 +764,12 @@ FloatingWindow {
 
             // Bluetooth
             Column {
+                id: pg_bluetooth
                 visible: win.page === "bluetooth"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_bluetooth.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "Bluetooth"; sub: win.btOk ? (win.btPower ? "On" : "Off") : win.btErr; last: true
@@ -762,7 +802,12 @@ FloatingWindow {
 
             // Night Light
             Column {
+                id: pg_night
                 visible: win.page === "night"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_night.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "Night Light"; sub: "Warmer colours in the evening, easier on the eyes"
@@ -779,7 +824,12 @@ FloatingWindow {
 
             // Time Travel
             Column {
+                id: pg_travel
                 visible: win.page === "travel"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_travel.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "Save a snapshot of your files"; sub: win.snapMsg !== "" ? win.snapMsg : "Snapshots take little space, unchanged files are shared"; last: true
@@ -822,22 +872,14 @@ FloatingWindow {
                 T { visible: win.snapSel !== "" && win.snapMsg !== ""; width: parent.width; text: win.snapMsg; color: Theme.i55; font.pixelSize: 14; wrapMode: Text.WordWrap }
             }
 
-            // Beta Lab
-            Column {
-                visible: win.page === "beta"
-                width: parent.width; spacing: 18
-                Card {
-                    Row2 { label: "Crash test"; sub: "For one minute the memory of your running programs is overwritten more and more while the song plays, then the kernel panics and the computer stops. Save your work first. Super+Shift+Esc stops the test."
-                        Switch { on: win.glSure; onToggled: (v) => win.glSure = v } }
-                    Row2 { label: win.glRunning ? "Running" : "Start"; sub: "Song: Uwa!! So Temperate, UNDERTALE Soundtrack, from YouTube. Needs the internet, without it a plain tone plays."; last: true
-                        Btn { label: win.glRunning ? "Running" : "Start 60 second test"; danger: true
-                            onClicked: { if (win.glSure && !win.glRunning) { win.glRunning = true; glP.running = true } } } }
-                }
-            }
-
             // Software Update
             Column {
+                id: pg_updates
                 visible: win.page === "updates"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_updates.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: win.upMsg; sub: win.upBusy ? win.upLine : "Smof and the system packages come from the Smof repository"; last: true
@@ -865,7 +907,12 @@ FloatingWindow {
 
             // Account
             Column {
+                id: pg_account
                 visible: win.page === "account"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_account.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Item {
@@ -887,7 +934,12 @@ FloatingWindow {
 
             // About
             Column {
+                id: pg_about
                 visible: win.page === "about"
+                property real appear: visible ? 1 : 0       // a page that opens fades in and rises a little
+                Behavior on appear { enabled: visible; NumberAnimation { duration: 460; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+                opacity: appear
+                transform: Translate { y: (1 - pg_about.appear) * 18 }
                 width: parent.width; spacing: 18
                 Card {
                     Row2 { label: "System"; Val { text: win.info.os || "" } }

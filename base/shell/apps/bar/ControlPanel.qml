@@ -17,7 +17,9 @@ PopupWindow {
     readonly property real maxH: (pw.win && pw.win.screen ? pw.win.screen.height : 768) - 80
     implicitHeight: Math.min(body.implicitHeight + 32, maxH)
     color: "transparent"
-    visible: Ui.panelOpen
+    // the window stays until the closing animation has ended
+    property bool shown: Ui.panelOpen
+    visible: Ui.panelOpen || panelCard.opacity > 0.01
 
     // clipboard history, from cliphist
     property bool clipMode: false
@@ -68,9 +70,9 @@ PopupWindow {
         Rectangle {
             anchors.fill: parent; radius: 24
             color: qt.on ? Theme.acc : Theme.glass2
-            Behavior on color { ColorAnimation { duration: 200 } }
+            Behavior on color { ColorAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             scale: tma.pressed ? .97 : 1
-            Behavior on scale { NumberAnimation { duration: 120 } }
+            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
         }
         Column {
             x: 14; y: 14; width: parent.width - 28
@@ -90,16 +92,22 @@ PopupWindow {
         Rectangle {
             anchors.fill: parent; radius: 24
             color: pb.danger ? Theme.sysbg : Theme.glass2
-            Rectangle { anchors.fill: parent; radius: 24; color: Theme.acc; opacity: pma.containsMouse ? .14 : 0; Behavior on opacity { NumberAnimation { duration: 100 } } }
+            Rectangle { anchors.fill: parent; radius: 24; color: Theme.acc; opacity: pma.containsMouse ? .14 : 0; Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
         }
         T { anchors.centerIn: parent; text: pb.label; w: 560; font.pixelSize: 16; color: pb.danger ? (Theme.dark ? "#FFB59E" : "#B3401C") : Theme.ink }
         MouseArea { id: pma; anchors.fill: parent; hoverEnabled: true; onClicked: pb.clicked() }
     }
 
     Rectangle {
+        id: panelCard
         anchors.fill: parent
         anchors.topMargin: 8
         radius: 30
+        opacity: pw.shown ? 1 : 0
+        scale: pw.shown ? 1 : 0.92
+        transformOrigin: Item.TopRight
+        Behavior on opacity { NumberAnimation { duration: pw.shown ? 320 : 220; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+        Behavior on scale { NumberAnimation { duration: pw.shown ? 460 : 260; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
         color: Theme.panelbg
         border.color: Theme.glassBorder
         Flickable {
@@ -160,7 +168,7 @@ PopupWindow {
                     visible: pw.clipMode && pw.clips.length > 0
                     anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                     width: cct.implicitWidth + 24; height: 30
-                    Rectangle { anchors.fill: parent; radius: 15; color: Theme.acc; opacity: ccma.containsMouse ? .16 : 0; Behavior on opacity { NumberAnimation { duration: 100 } } }
+                    Rectangle { anchors.fill: parent; radius: 15; color: Theme.acc; opacity: ccma.containsMouse ? .16 : 0; Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                     T { id: cct; anchors.centerIn: parent; text: "Clear"; w: 560; font.pixelSize: 15; color: Theme.acc }
                     MouseArea { id: ccma; anchors.fill: parent; hoverEnabled: true; onClicked: { Quickshell.execDetached(["cliphist", "wipe"]); pw.clips = [] } }
                 }
@@ -168,7 +176,7 @@ PopupWindow {
                     visible: !pw.clipMode && NotifStore.count > 0
                     anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                     width: ct.implicitWidth + 24; height: 30
-                    Rectangle { anchors.fill: parent; radius: 15; color: Theme.acc; opacity: cma.containsMouse ? .16 : 0; Behavior on opacity { NumberAnimation { duration: 100 } } }
+                    Rectangle { anchors.fill: parent; radius: 15; color: Theme.acc; opacity: cma.containsMouse ? .16 : 0; Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                     T { id: ct; anchors.centerIn: parent; text: "Clear all"; w: 560; font.pixelSize: 15; color: Theme.acc }
                     MouseArea { id: cma; anchors.fill: parent; hoverEnabled: true; onClicked: NotifStore.clearAll() }
                 }
@@ -187,7 +195,7 @@ PopupWindow {
                 delegate: Rectangle {
                     required property var modelData
                     width: clv.width; height: 48; radius: 20; color: Theme.glass2
-                    Rectangle { anchors.fill: parent; radius: 20; color: Theme.acc; opacity: cpm.containsMouse ? .14 : 0; Behavior on opacity { NumberAnimation { duration: 100 } } }
+                    Rectangle { anchors.fill: parent; radius: 20; color: Theme.acc; opacity: cpm.containsMouse ? .14 : 0; Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                     T { x: 16; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 32; elide: Text.ElideRight; maximumLineCount: 1
                         text: modelData.image ? "Picture" : modelData.text.replace(/\s+/g, " "); font.pixelSize: 15; color: modelData.image ? Theme.acc : Theme.ink }
                     MouseArea { id: cpm; anchors.fill: parent; hoverEnabled: true; onClicked: pw.pasteClip(modelData.id) }
@@ -203,7 +211,7 @@ PopupWindow {
                 model: NotifStore.store
                 interactive: contentHeight > height
                 // mouse wheel and touchpad scrolling, smooth
-                NumberAnimation { id: wheelAnim; target: lv; property: "contentY"; duration: 200; easing.type: Easing.OutCubic }
+                NumberAnimation { id: wheelAnim; target: lv; property: "contentY"; duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] }
                 WheelHandler {
                     acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                     onWheel: (ev) => {
@@ -221,8 +229,8 @@ PopupWindow {
                 }
                 add: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 260 } }
                 remove: Transition { ParallelAnimation { NumberAnimation { property: "opacity"; to: 0; duration: 200 } NumberAnimation { property: "x"; to: 80; duration: 200; easing.type: Easing.InCubic } } }
-                displaced: Transition { NumberAnimation { properties: "y"; duration: 260; easing.type: Easing.OutCubic } NumberAnimation { property: "opacity"; to: 1; duration: 0 } }
-                T { opacity: NotifStore.count === 0 ? 1 : 0; Behavior on opacity { SequentialAnimation { PauseAnimation { duration: NotifStore.count === 0 ? 350 : 0 } NumberAnimation { duration: 200 } } } anchors.centerIn: parent; text: Ui.dnd ? "Focus is on" : "No new notifications"; font.pixelSize: 16; color: Theme.i55 }
+                displaced: Transition { NumberAnimation { properties: "y"; duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } NumberAnimation { property: "opacity"; to: 1; duration: 0 } }
+                T { opacity: NotifStore.count === 0 ? 1 : 0; Behavior on opacity { SequentialAnimation { PauseAnimation { duration: NotifStore.count === 0 ? 350 : 0 } NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } } anchors.centerIn: parent; text: Ui.dnd ? "Focus is on" : "No new notifications"; font.pixelSize: 16; color: Theme.i55 }
                 delegate: Rectangle {
                     id: card
                     required property real nid

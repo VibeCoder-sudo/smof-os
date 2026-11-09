@@ -45,6 +45,6 @@ Item {
         color: Theme.glass
         border.color: Theme.glassBorder
         border.width: 1
-        Behavior on color { ColorAnimation { duration: 400 } }
+        Behavior on color { ColorAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
     }
 }

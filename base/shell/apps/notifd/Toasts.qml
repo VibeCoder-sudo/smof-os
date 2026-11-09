@@ -19,7 +19,7 @@ PanelWindow {
         id: col
         width: 380
         spacing: 8
-        move: Transition { NumberAnimation { properties: "y"; duration: 280; easing.type: Easing.OutCubic } }
+        move: Transition { NumberAnimation { properties: "y"; duration: 280; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
         Repeater {
             model: Notifs.toasts
             Item {
@@ -37,7 +37,7 @@ PanelWindow {
                 readonly property real baseH: Math.max(72, tx.implicitHeight + 28)
                 // only a toast that has buttons grows when the cursor is on it
                 property real extra: (acts.length > 0 && hh.hovered && !hide) ? 54 : 0
-                Behavior on extra { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                Behavior on extra { NumberAnimation { duration: 220; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
                 width: 380
                 height: baseH + extra
                 readonly property bool on: shown && !hide
@@ -51,7 +51,7 @@ PanelWindow {
                     x: slot.on ? 0 : 70
                     opacity: slot.on ? 1 : 0
                     Behavior on x { NumberAnimation { duration: 380; easing.type: Easing.OutBack; easing.overshoot: 0.8 } }
-                    Behavior on opacity { NumberAnimation { duration: 260 } }
+                    Behavior on opacity { NumberAnimation { duration: 390; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
                     border.color: slot.level === "info" ? Theme.glassBorder : Theme.lvFg(slot.level)
                     border.width: slot.level === "info" ? 1 : 2
                     MouseArea { anchors.fill: parent; onClicked: Notifs.hideToast(slot.nid) }
@@ -73,7 +73,7 @@ PanelWindow {
                         x: 70; y: slot.baseH - 4
                         spacing: 8
                         opacity: (slot.acts.length > 0 && hh.hovered && !slot.hide) ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 110 } }
+                        Behavior on opacity { NumberAnimation { duration: 165; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
                         Repeater {
                             model: slot.acts
                             Item {

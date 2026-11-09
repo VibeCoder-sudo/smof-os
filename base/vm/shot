@@ -1,0 +1,6 @@
+#!/bin/bash
+# ./shot [name] : screenshot of the VM screen (taken inside the guest) saved to the scratchpad
+cd "$(dirname "$0")"
+N=${1:-vm}
+./g "su mj -c 'cd ~; XDG_RUNTIME_DIR=/run/user/1001 WAYLAND_DISPLAY=wayland-1 grim /tmp/s.png'"
+scp -q -i id_mjos -o BatchMode=yes -o LogLevel=ERROR root@$(cat ip.txt):/tmp/s.png /private/tmp/claude-501/-Users-belousovkonstantin-Smof-1/bc81849e-e8b1-4426-8683-2dc77dff415d/scratchpad/$N.png

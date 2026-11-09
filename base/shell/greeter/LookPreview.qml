@@ -10,7 +10,7 @@ Item {
     width: 290
     height: 190
     scale: ma.containsMouse ? 1.03 : 1
-    Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+    Behavior on scale { NumberAnimation { duration: 210; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
 
     Item {
         id: pic
@@ -55,12 +55,12 @@ Item {
         anchors.fill: parent; anchors.margins: -6; radius: 32; color: "transparent"
         border.width: 4; border.color: Theme.acc
         opacity: lp.selected ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 180 } }
+        Behavior on opacity { NumberAnimation { duration: 270; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
     }
     Rectangle {
         x: parent.width - 40; y: 10; width: 30; height: 30; radius: 15; color: Theme.acc
         scale: lp.selected ? 1 : 0
-        Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
+        Behavior on scale { NumberAnimation { duration: 330; easing.type: Easing.OutBack } }
         Canvas { anchors.fill: parent; onPaint: { var c = getContext("2d"); c.reset(); c.strokeStyle = String(Theme.onacc); c.lineWidth = 3; c.lineCap = "round"; c.lineJoin = "round"
             c.beginPath(); c.moveTo(9, 15.5); c.lineTo(13.5, 20); c.lineTo(21.5, 10.5); c.stroke() } }
     }

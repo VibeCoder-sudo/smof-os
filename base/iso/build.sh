@@ -21,6 +21,10 @@ say "the parts that must be compiled for this processor"
 g++ -std=c++17 -O2 -shared -fPIC -DWLR_USE_UNSTABLE -DWAYFIRE_PLUGIN -o "$STAGE/usr/lib/wayfire/librounded-corners.so" \
   "$BASE/vm/rounded-corners/rounded-corners.cpp" $(pkg-config --cflags --libs wayfire wlroots-0.20 pixman-1)
 install -m 644 "$BASE/vm/rounded-corners/rounded-corners.xml" "$STAGE/usr/share/wayfire/metadata/"
+# smooth geometry: windows glide to a new size and place
+g++ -std=c++17 -O2 -shared -fPIC -DWLR_USE_UNSTABLE -DWAYFIRE_PLUGIN -o "$STAGE/usr/lib/wayfire/libsmooth-geometry.so" \
+  "$BASE/vm/smooth-geometry/smooth-geometry.cpp" $(pkg-config --cflags --libs wayfire wlroots-0.20 pixman-1)
+install -m 644 "$BASE/vm/smooth-geometry/smooth-geometry.xml" "$STAGE/usr/share/wayfire/metadata/"
 # window frames: pixdecor from upstream
 git clone --depth 1 https://github.com/soreau/pixdecor "$WORK/pixdecor"
 meson setup "$WORK/pixdecor/build" "$WORK/pixdecor" --prefix=/usr --buildtype=release
@@ -48,7 +52,7 @@ install -m 644 "$BASE/vm/fonts-smof.conf" "$STAGE/etc/fonts/conf.d/60-smof.conf"
 say "scripts"
 for s in smof-activity smof-askpass smof-bgapps smof-brew smof-cleanup smof-desktop smof-devwatch smof-display smof-downloads smof-fileops smof-files \
          smof-front smof-health smof-input smof-ipc smof-menubridge smof-pkg smof-session smof-settings smof-shell smof-shot smof-sound smof-store \
-         smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme smof-wifi smof-bt smof-night smof-spotlight smof-snap smof-record smof-glitch smof-glitch-mem; do
+         smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme smof-wifi smof-bt smof-night smof-spotlight smof-snap smof-record; do
   [ -f "$BASE/vm/$s" ] || { echo "missing script $s"; exit 1; }
   install -m 755 "$BASE/vm/$s" "$STAGE/usr/local/bin/$s"
 done

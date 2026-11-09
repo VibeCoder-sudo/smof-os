@@ -234,7 +234,7 @@ PanelWindow {
                             radius: 14
                             color: Theme.acc
                             opacity: (!modelData.disabled && mm.containsMouse) || (modelData.hasKids && bar.subAnchor === parent && subPop.visible) ? .16 : 0
-                            Behavior on opacity { NumberAnimation { duration: 100 } }
+                            Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
                         }
                         T {
                             visible: !modelData.sep
@@ -291,7 +291,7 @@ PanelWindow {
                         width: scol.width
                         height: modelData.sep ? 13 : 42
                         Rectangle { visible: !!modelData.sep; anchors.verticalCenter: parent.verticalCenter; x: 8; width: parent.width - 16; height: 1; color: Theme.i12 }
-                        Rectangle { visible: !modelData.sep; anchors.fill: parent; radius: 14; color: Theme.acc; opacity: (!modelData.disabled && sm.containsMouse) ? .16 : 0; Behavior on opacity { NumberAnimation { duration: 100 } } }
+                        Rectangle { visible: !modelData.sep; anchors.fill: parent; radius: 14; color: Theme.acc; opacity: (!modelData.disabled && sm.containsMouse) ? .16 : 0; Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                         T {
                             visible: !modelData.sep
                             x: 14 + modelData.depth * 16; anchors.verticalCenter: parent.verticalCenter
@@ -394,7 +394,7 @@ PanelWindow {
         property real pct: 0
         height: 5; radius: 2.5; color: "#33FFFFFF"
         Rectangle { height: parent.height; radius: 2.5; color: "#D9CCFF"; width: parent.width * Math.max(0, Math.min(100, pct)) / 100
-            Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } } }
+            Behavior on width { NumberAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
     }
     component ActBtn: Item {
         property string label: ""
@@ -416,13 +416,13 @@ PanelWindow {
         MouseArea { anchors.fill: parent; enabled: ab.sz !== "none" && ab.sz !== "expanded"; onClicked: bar.forced = "expanded" }
         function run(c) { if (c) Quickshell.execDetached(["sh", "-c", c]) }
         // super tiny: title, thin bar, small text
-        Item { anchors.fill: parent; opacity: ab.sz === "super" ? 1 : 0; visible: opacity > 0; Behavior on opacity { NumberAnimation { duration: 200 } }
+        Item { anchors.fill: parent; opacity: ab.sz === "super" ? 1 : 0; visible: opacity > 0; Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             Column { x: 16; y: 0; width: parent.width - 32; spacing: 5
                 T { width: parent.width; elide: Text.ElideRight; text: ab.ttl; font.pixelSize: 14; w: 560; color: "#FFFFFF" }
                 ActBar { width: parent.width; pct: ab.pct < 0 ? 0 : ab.pct; visible: ab.pct >= 0 }
                 T { width: parent.width; elide: Text.ElideRight; text: a.sub || ""; font.pixelSize: 12; color: "#B8FFFFFF" } } }
         // tiny: icon, two lines, bar
-        Item { anchors.fill: parent; opacity: ab.sz === "tiny" ? 1 : 0; visible: opacity > 0; Behavior on opacity { NumberAnimation { duration: 200 } }
+        Item { anchors.fill: parent; opacity: ab.sz === "tiny" ? 1 : 0; visible: opacity > 0; Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             Row { x: 16; y: 0; spacing: 10
                 ActIcon { name: a.icon || ""; letter: ab.letter }
                 Column { width: ab.width - 32 - 44; anchors.verticalCenter: parent.verticalCenter
@@ -430,7 +430,7 @@ PanelWindow {
                     T { width: parent.width; elide: Text.ElideRight; text: a.sub || ""; font.pixelSize: 12; color: "#B8FFFFFF" } } }
             ActBar { x: 16; y: 46; width: parent.width - 32; pct: ab.pct < 0 ? 0 : ab.pct; visible: ab.pct >= 0 } }
         // medium: picture, title, one button, bar
-        Item { anchors.fill: parent; opacity: ab.sz === "medium" ? 1 : 0; visible: opacity > 0; Behavior on opacity { NumberAnimation { duration: 200 } }
+        Item { anchors.fill: parent; opacity: ab.sz === "medium" ? 1 : 0; visible: opacity > 0; Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             Rectangle { x: 16; y: 0; width: parent.width - 32; height: 64; radius: 12; color: "#26B9A6FF"; clip: true
                 Image { anchors.fill: parent; visible: !!a.image; source: a.image ? "file://" + a.image : ""; fillMode: Image.PreserveAspectCrop }
                 ActIcon { visible: !a.image; anchors.centerIn: parent; width: 44; height: 44; name: a.icon || ""; letter: ab.letter; color: "transparent" } }
@@ -441,7 +441,7 @@ PanelWindow {
                 ActBtn { visible: !!(a.actions && a.actions.length); anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; label: a.actions && a.actions.length ? a.actions[0].label : ""; onClicked: ab.run(a.actions[0].cmd) } }
             ActBar { x: 16; y: 112; width: parent.width - 32; pct: ab.pct < 0 ? 0 : ab.pct; visible: ab.pct >= 0 } }
         // expanded: everything
-        Item { anchors.fill: parent; opacity: ab.sz === "expanded" ? 1 : 0; visible: opacity > 0; Behavior on opacity { NumberAnimation { duration: 200 } }
+        Item { anchors.fill: parent; opacity: ab.sz === "expanded" ? 1 : 0; visible: opacity > 0; Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
             Row { x: 16; y: 0; spacing: 10
                 ActIcon { name: a.icon || ""; letter: ab.letter }
                 Column { width: ab.width - 32 - 44; anchors.verticalCenter: parent.verticalCenter
@@ -463,13 +463,13 @@ PanelWindow {
         height: 44
         radius: 22
         y: bar.shown ? 10 : -height - 16
-        Behavior on y { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+        Behavior on y { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
         HoverHandler { onHoveredChanged: bar.pointerOnBar(hovered) }
         opacity: Ui.entered ? 1 : 0
-        Behavior on opacity { SequentialAnimation { PauseAnimation { duration: 450 } NumberAnimation { duration: 700; easing.type: Easing.OutCubic } } }
+        Behavior on opacity { SequentialAnimation { PauseAnimation { duration: 650 } NumberAnimation { duration: 700; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } } }
         color: Theme.pill
         border.color: "#33FFFFFF"
-        Behavior on color { ColorAnimation { duration: 400 } }
+        Behavior on color { ColorAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
     }
     component BarBtn: Item {
         id: b
@@ -479,7 +479,7 @@ PanelWindow {
         signal entered()
         width: t.implicitWidth + 28
         height: 36
-        Rectangle { anchors.fill: parent; radius: 18; color: "white"; opacity: ma.pressed ? .26 : (ma.containsMouse ? .16 : 0); Behavior on opacity { NumberAnimation { duration: 120 } } }
+        Rectangle { anchors.fill: parent; radius: 18; color: "white"; opacity: ma.pressed ? .26 : (ma.containsMouse ? .16 : 0); Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
         T { id: t; anchors.centerIn: parent; color: "#FFFFFF"; font.pixelSize: 17; w: b.bold ? 600 : 460 }
         MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; onClicked: b.clicked(); onEntered: b.entered() }
     }
@@ -489,7 +489,7 @@ PanelWindow {
         signal clicked()
         width: 36
         height: 36
-        Rectangle { anchors.fill: parent; radius: 18; color: "white"; opacity: ma2.pressed ? .26 : (ma2.containsMouse ? .16 : 0); Behavior on opacity { NumberAnimation { duration: 120 } } }
+        Rectangle { anchors.fill: parent; radius: 18; color: "white"; opacity: ma2.pressed ? .26 : (ma2.containsMouse ? .16 : 0); Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
         Ico { anchors.centerIn: parent; width: 20; height: 20; name: ib.name; fixed: true }
         MouseArea { id: ma2; anchors.fill: parent; hoverEnabled: true; onClicked: ib.clicked() }
     }
@@ -498,7 +498,7 @@ PanelWindow {
         id: leftPill
         x: 16
         width: lrow.implicitWidth + 12
-        Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        Behavior on width { NumberAnimation { duration: 240; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
         Row {
             id: lrow
             x: 6
@@ -507,7 +507,7 @@ PanelWindow {
             Item {
                 id: btnLogo
                 width: 36; height: 36; anchors.verticalCenter: parent.verticalCenter
-                Rectangle { anchors.fill: parent; radius: 18; color: "white"; opacity: lma.pressed ? .26 : (lma.containsMouse || bar.menuIndex === 4 ? .16 : 0); Behavior on opacity { NumberAnimation { duration: 120 } } }
+                Rectangle { anchors.fill: parent; radius: 18; color: "white"; opacity: lma.pressed ? .26 : (lma.containsMouse || bar.menuIndex === 4 ? .16 : 0); Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                 Rectangle { anchors.centerIn: parent; width: 24; height: 24; radius: 12
                     gradient: Gradient { GradientStop { position: 0; color: "#F6B8D4" } GradientStop { position: 1; color: "#8E7BDB" } } }
                 MouseArea { id: lma; anchors.fill: parent; hoverEnabled: true; onClicked: bar.openMenu(4, btnLogo); onEntered: if (bar.menuUp && bar.menuIndex !== 4) bar.openMenu(4, btnLogo) }
@@ -536,8 +536,8 @@ PanelWindow {
         width: bar.pillW
         height: bar.pillH
         clip: true
-        Behavior on width { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
-        Behavior on height { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
+        Behavior on width { NumberAnimation { duration: 570; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+        Behavior on height { NumberAnimation { duration: 570; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
         Item { id: rightTop; width: parent.width; height: 44 }
         ActBody { x: 0; y: 44; width: parent.width; height: parent.height - 44 }
         Row {

@@ -111,7 +111,7 @@ PanelWindow {
         id: root
         anchors.fill: parent
         opacity: lw.open ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 270; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
         focus: true
         Keys.onEscapePressed: lw.close()
 
@@ -128,7 +128,7 @@ PanelWindow {
             color: Theme.panelbg
             border.color: Theme.glassBorder
             scale: lw.open ? 1 : 0.96
-            Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: 330; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
             MouseArea { anchors.fill: parent }   // clicks inside do not close
 
             // search
@@ -201,7 +201,7 @@ PanelWindow {
                     required property var modelData
                     width: grid.cellWidth; height: grid.cellHeight
                     readonly property string path: modelData.icon ? Quickshell.iconPath(modelData.icon, true) : ""
-                    Rectangle { anchors.fill: parent; anchors.margins: 6; radius: 24; color: Theme.acc; opacity: tma.pressed ? .2 : (tma.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 100 } } }
+                    Rectangle { anchors.fill: parent; anchors.margins: 6; radius: 24; color: Theme.acc; opacity: tma.pressed ? .2 : (tma.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                     Item {
                         x: (parent.width - 72) / 2; y: 18; width: 72; height: 72
                         // the Papirus icon first, then whatever the system theme has, and a letter when nothing fits

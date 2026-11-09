@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<wayfire>
+	<plugin name="smooth-geometry">
+		<_short>Smooth geometry</_short>
+		<_long>Windows glide to their new size and place instead of jumping, done on the graphics card, so tiling and resizing stay smooth.</_long>
+		<category>Effects</category>
+		<option name="duration" type="int">
+			<_short>Duration</_short>
+			<_long>How long the glide takes, in milliseconds.</_long>
+			<default>380</default>
+			<min>0</min>
+			<max>2000</max>
+		</option>
+		<option name="min_distance" type="int">
+			<_short>Smallest change that is animated</_short>
+			<_long>Changes smaller than this many pixels are taken as dragging with the mouse and follow it directly.</_long>
+			<default>28</default>
+			<min>1</min>
+			<max>400</max>
+		</option>
+	</plugin>
+</wayfire>

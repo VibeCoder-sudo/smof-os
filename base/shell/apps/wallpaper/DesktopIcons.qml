@@ -193,9 +193,9 @@ Item {
             y: dragging ? dragY : (di.placed[modelData.name] ? di.placed[modelData.name].y : 0)
             z: dragging ? 10 : 0
             opacity: dragging ? 0 : 1        // while dragged only the picture in the top layer is seen, not a second copy with its highlight
-            Behavior on x { enabled: !ic.dragging; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-            Behavior on y { enabled: !ic.dragging; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-            Rectangle { anchors.fill: parent; anchors.margins: 4; radius: 20; color: Theme.acc; opacity: ic.picked ? .32 : (ma.containsMouse ? .16 : 0); Behavior on opacity { NumberAnimation { duration: 100 } } }
+            Behavior on x { enabled: !ic.dragging; NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+            Behavior on y { enabled: !ic.dragging; NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0] } }
+            Rectangle { anchors.fill: parent; anchors.margins: 4; radius: 20; color: Theme.acc; opacity: ic.picked ? .32 : (ma.containsMouse ? .16 : 0); Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
             Item {
                 x: (parent.width - 64) / 2; y: 14; width: 64; height: 64
                 opacity: ic.dragging ? 0 : 1

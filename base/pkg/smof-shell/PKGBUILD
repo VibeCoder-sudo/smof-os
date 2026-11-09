@@ -8,7 +8,7 @@ arch=(any)
 url='https://github.com/VibeCoder-sudo/smof-os'
 license=(custom)
 depends=(wayfire quickshell foot greetd seatd networkmanager python python-numpy python-sentencepiece rsync wl-clipboard cliphist wtype grim slurp)
-optdepends=('mpv: music of the Beta Lab crash test' 'yt-dlp: music of the Beta Lab crash test' 'nodejs: lets yt-dlp read YouTube' 'bluez-utils: Bluetooth' 'wlsunset: Night Light' 'wf-recorder: screen recording' 'ncnn: Smof upscaler')
+optdepends=('bluez-utils: Bluetooth' 'wlsunset: Night Light' 'wf-recorder: screen recording' 'ncnn: Smof upscaler')
 backup=()
 options=(!strip)
 
@@ -28,7 +28,7 @@ package() {
   install -m 644 "$B/vm/fonts-smof.conf" "$pkgdir/etc/fonts/conf.d/60-smof.conf"
   for s in smof-activity smof-askpass smof-bgapps smof-brew smof-cleanup smof-desktop smof-devwatch smof-display smof-downloads smof-fileops smof-files \
            smof-front smof-health smof-input smof-ipc smof-menubridge smof-pkg smof-session smof-settings smof-shell smof-shot smof-sound smof-store \
-           smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme smof-wifi smof-bt smof-night smof-spotlight smof-snap smof-record smof-glitch smof-glitch-mem; do
+           smof-tiler smof-timer smof-upscale smof-upscaler smof-volume smof-wm-theme smof-wifi smof-bt smof-night smof-spotlight smof-snap smof-record; do
     install -m 755 "$B/vm/$s" "$pkgdir/usr/local/bin/$s"
   done
   for s in smof-oobe smof-splash smof-install; do install -m 755 "$B/vm/$s" "$pkgdir/usr/local/sbin/$s"; done

@@ -419,7 +419,7 @@ FloatingWindow {
                         height: modelData.sep ? 13 : (modelData.header ? 30 : 38)
                         Rectangle { visible: !!modelData.sep; anchors.verticalCenter: parent.verticalCenter; x: 8; width: parent.width - 16; height: 1; color: Theme.i12 }
                         T { visible: !!modelData.header; x: 14; anchors.verticalCenter: parent.verticalCenter; text: modelData.header || ""; font.pixelSize: 13; w: 600; color: Theme.i55 }
-                        Rectangle { visible: !modelData.sep && !modelData.header; anchors.fill: parent; radius: 13; color: Theme.acc; opacity: !modelData.off && cma2.containsMouse ? .16 : 0; Behavior on opacity { NumberAnimation { duration: 90 } } }
+                        Rectangle { visible: !modelData.sep && !modelData.header; anchors.fill: parent; radius: 13; color: Theme.acc; opacity: !modelData.off && cma2.containsMouse ? .16 : 0; Behavior on opacity { NumberAnimation { duration: 135; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                         T {
                             visible: !modelData.sep && !modelData.header
                             x: 14; anchors.verticalCenter: parent.verticalCenter
@@ -446,7 +446,7 @@ FloatingWindow {
         signal clicked()
         width: 38; height: 38
         opacity: enabled2 ? 1 : .35
-        Rectangle { anchors.fill: parent; radius: 19; color: Theme.ink; opacity: tma.pressed ? .16 : (tma.containsMouse && tb.enabled2 ? .09 : 0); Behavior on opacity { NumberAnimation { duration: 100 } } }
+        Rectangle { anchors.fill: parent; radius: 19; color: Theme.ink; opacity: tma.pressed ? .16 : (tma.containsMouse && tb.enabled2 ? .09 : 0); Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
         T { visible: tb.icon === ""; anchors.centerIn: parent; text: tb.glyph; font.pixelSize: 22; w: 500 }
         Column { visible: tb.icon === "list"; anchors.centerIn: parent; spacing: 4
             Repeater { model: 3; Rectangle { width: 18; height: 2.4; radius: 1.2; color: Theme.ink } } }
@@ -463,7 +463,7 @@ FloatingWindow {
         property bool on: false
         anchors.fill: parent; radius: 16; color: Theme.acc; opacity: on ? .22 : 0
         border.color: Theme.acc; border.width: on ? 2 : 0
-        Behavior on opacity { NumberAnimation { duration: 90 } }
+        Behavior on opacity { NumberAnimation { duration: 135; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
     }
 
     // ---- sidebar ----
@@ -471,7 +471,7 @@ FloatingWindow {
         id: side
         width: win.compact ? 64 : (win.width < 800 ? 170 : 210); height: parent.height
         color: Theme.sidebg
-        Behavior on color { ColorAnimation { duration: 300 } }
+        Behavior on color { ColorAnimation { duration: 450; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
         Flickable {
             SmoothWheel {}
             anchors.fill: parent; clip: true; boundsBehavior: Flickable.StopAtBounds
@@ -487,7 +487,7 @@ FloatingWindow {
                     required property var modelData
                     width: parent.width; height: 42
                     readonly property bool cur: win.cwd === modelData.path
-                    Rectangle { anchors.fill: parent; radius: 14; color: Theme.acc; opacity: cur ? 1 : (pma.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 120 } } }
+                    Rectangle { anchors.fill: parent; radius: 14; color: Theme.acc; opacity: cur ? 1 : (pma.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                     DropRing { on: pdrop.containsDrag }
                     Image { x: win.compact ? (parent.width - 20) / 2 : 12; anchors.verticalCenter: parent.verticalCenter; width: 20; height: 20; sourceSize: Qt.size(60, 60)
                         source: "file:///usr/share/smof/icons/folder" + (cur ? (Theme.dark ? "" : "-d") : Theme.sfx) + ".svg" }
@@ -505,7 +505,7 @@ FloatingWindow {
                     width: parent.width; height: 52
                     readonly property bool cur: modelData.mount !== "" && (win.cwd === modelData.mount || win.cwd.indexOf(modelData.mount + "/") === 0)
                     readonly property bool busy: win.busyDev === modelData.dev
-                    Rectangle { anchors.fill: parent; radius: 14; color: Theme.acc; opacity: cur ? 1 : (dma.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 120 } } }
+                    Rectangle { anchors.fill: parent; radius: 14; color: Theme.acc; opacity: cur ? 1 : (dma.containsMouse ? .12 : 0); Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                     DropRing { on: ddrop.containsDrag && modelData.mount !== "" }
                     Rectangle { x: win.compact ? (parent.width - 22) / 2 : 12; anchors.verticalCenter: parent.verticalCenter; width: 22; height: 16; radius: 5; color: "transparent"; border.width: 2; border.color: cur ? Theme.onacc : Theme.ink
                         Rectangle { x: 4; y: 9; width: 4; height: 2; radius: 1; color: cur ? Theme.onacc : Theme.ink } }
@@ -654,7 +654,7 @@ FloatingWindow {
                 Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
                 Drag.proposedAction: Qt.MoveAction
                 Drag.mimeData: ({ "text/uri-list": win.dragUris })
-                Rectangle { anchors.fill: parent; anchors.margins: 4; radius: 18; color: Theme.acc; opacity: gcell.cur ? .22 : (gma.containsMouse ? .09 : 0); Behavior on opacity { NumberAnimation { duration: 100 } } }
+                Rectangle { anchors.fill: parent; anchors.margins: 4; radius: 18; color: Theme.acc; opacity: gcell.cur ? .22 : (gma.containsMouse ? .09 : 0); Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                 DropRing { on: gdrop.containsDrag && modelData.dir; anchors.margins: 4 }
                 Item {
                     x: (parent.width - 60) / 2; y: 12; width: 60; height: 60
@@ -716,7 +716,7 @@ FloatingWindow {
                 Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
                 Drag.proposedAction: Qt.MoveAction
                 Drag.mimeData: ({ "text/uri-list": win.dragUris })
-                Rectangle { anchors.fill: parent; anchors.topMargin: 1; anchors.bottomMargin: 1; radius: 14; color: Theme.acc; opacity: lrow.cur ? .22 : (lma.containsMouse ? .09 : 0); Behavior on opacity { NumberAnimation { duration: 100 } } }
+                Rectangle { anchors.fill: parent; anchors.topMargin: 1; anchors.bottomMargin: 1; radius: 14; color: Theme.acc; opacity: lrow.cur ? .22 : (lma.containsMouse ? .09 : 0); Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } } }
                 DropRing { on: ldrop.containsDrag && modelData.dir; anchors.topMargin: 1; anchors.bottomMargin: 1 }
                 Item { x: 12; anchors.verticalCenter: parent.verticalCenter; width: 28; height: 28
                     Image { visible: modelData.dir; anchors.fill: parent; sourceSize: Qt.size(60, 60); source: "file:///usr/share/smof/icons/folder" + Theme.sfx + ".svg"; fillMode: Image.PreserveAspectFit; opacity: .9 }
