@@ -3,7 +3,7 @@
 # (full height) and takes the right half. More windows share the screen in zones: three give a left half and two right
 # quarters, four give quarters, and so on. Maximized, full screen and minimized windows are left alone.
 # It talks to wayfire over its IPC socket (ipc and ipc-rules plugins).
-import socket, json, struct, os, glob, time, select, sys
+import socket, json, struct, os, glob, time, select, sys, math
 
 CONF = os.path.expanduser("~/.config/smof-windows.json")
 BAR, DOCK = 68, 112     # room for the bar on top and the dock at the bottom
@@ -100,7 +100,7 @@ def animate(path, moves):
 # side and takes the second half, so two windows give left and right halves, three give a left half and two right
 # quarters, four give quarters, and it goes on like that for any number. When a window goes away its neighbour takes
 # over the freed space, so nothing is left empty.
-tree = None
+trees = {}      # workspace (x, y) -> layout tree of the windows on it
 
 def leaf_rects(node, r, out):
     if "id" in node:
@@ -147,12 +147,21 @@ saved = {}      # view id -> geometry before we tiled it
 tiled = set()   # view ids we moved
 
 def relayout(path):
+    # every workspace has its own layout: windows are grouped by the workspace they sit on and each group is tiled inside its own screen
     load_conf()
     views = call(path, "window-rules/list-views")
     outs = call(path, "window-rules/list-outputs")
     if not outs: return
     out = outs[0]
     W, Hh = int(out["geometry"]["width"]), int(out["geometry"]["height"])
+    curx, cury = int((out.get("workspace") or {}).get("x", 0)), int((out.get("workspace") or {}).get("y", 0))
+    def ws_of(g):
+        # coordinates are relative to the workspace that is shown now, a window on the next workspace to the right sits W further to the right
+        return (curx + int(math.floor((g["x"] + g["width"] / 2.0) / W)), cury + int(math.floor((g["y"] + g["height"] / 2.0) / Hh)))
+    def to_local(g, ws):
+        return {"x": g["x"] - (ws[0] - curx) * W, "y": g["y"] - (ws[1] - cury) * Hh, "width": g["width"], "height": g["height"]}
+    def to_world(g, ws):
+        return {"x": g["x"] + (ws[0] - curx) * W, "y": g["y"] + (ws[1] - cury) * Hh, "width": g["width"], "height": g["height"]}
     cand = []
     for v in views:
         if v.get("type") != "toplevel" or not v.get("mapped"): continue
@@ -163,6 +172,7 @@ def relayout(path):
         mn, mx = v.get("min-size") or {}, v.get("max-size") or {}
         if mx.get("width", 0) > 0 and mx.get("width") == mn.get("width") and mx.get("height") == mn.get("height"): continue
         if v["geometry"]["width"] < 260 or v["geometry"]["height"] < 160: continue
+        v["ws"] = ws_of(v["geometry"])
         cand.append(v)
     cand.sort(key=lambda v: v["id"])
     # a second window of the same program that opened while the first is still there is a dialog (Qt and GTK do not
@@ -179,51 +189,57 @@ def relayout(path):
     for v in dialogs:
         if v["id"] in saved:
             g = saved.pop(v["id"]); tiled.discard(v["id"])
-            back.append((v["id"], dict(v["geometry"]), {k: int(g[k]) for k in ("x", "y", "width", "height")}))
+            back.append((v["id"], dict(v["geometry"]), to_world({k: int(g[k]) for k in ("x", "y", "width", "height")}, v["ws"])))
     if back: animate(path, back)
     alive = {v["id"] for v in views}
     for i in list(tiled):
         if i not in alive: tiled.discard(i); saved.pop(i, None)
-    n = len(cand)
-    global tree
-    if n < 2 or not TILING: tree = None
     if not TILING:
         # switched off: put every window we moved back where it was
         mv = []
         for v in cand:
             if v["id"] in tiled and v["id"] in saved:
                 g = saved.pop(v["id"]); tiled.discard(v["id"])
-                mv.append((v["id"], dict(v["geometry"]), {k: int(g[k]) for k in ("x", "y", "width", "height")}))
+                mv.append((v["id"], dict(v["geometry"]), to_world({k: int(g[k]) for k in ("x", "y", "width", "height")}, v["ws"])))
         animate(path, mv)
+        trees.clear()
         return
-    if n >= 2:
-        region = (SIDE, TOP, W - 2 * SIDE, Hh - TOP - BOTTOM)
-        have = set(cand_ids := [v["id"] for v in cand])
-        for i in tree_ids(tree):
-            if i not in have: tree = tree_remove(tree, i)
-        for i in cand_ids:
-            if i not in tree_ids(tree): tree = tree_add(tree, i, region)
-        rs = {}
-        leaf_rects(tree, region, rs)
-        mv = []
-        for v in cand:
-            isnew = v["id"] not in saved
-            if isnew: saved[v["id"]] = dict(v["geometry"])
-            tiled.add(v["id"])
-            x, y, w, h = rs[v["id"]]
-            tgt = {"x": int(x), "y": int(y), "width": int(w), "height": int(h)}
-            if isnew:
-                # a window that has just opened goes straight to its zone, it does not grow there from its own size:
-                # the opening animation of the compositor does the entrance
-                fast_call(path, "window-rules/configure-view", {"id": v["id"], "geometry": tgt})
-                continue
-            mv.append((v["id"], dict(v["geometry"]), tgt))
-        animate(path, mv)
-    elif n == 1:
-        v = cand[0]
-        if v["id"] in tiled and v["id"] in saved:
-            g = saved.pop(v["id"]); tiled.discard(v["id"])
-            animate(path, [(v["id"], dict(v["geometry"]), {k: int(g[k]) for k in ("x", "y", "width", "height")})])
+    groups = {}
+    for v in cand: groups.setdefault(v["ws"], []).append(v)
+    for ws in list(trees):
+        if ws not in groups: del trees[ws]
+    mv = []
+    for ws, vs in groups.items():
+        if len(vs) >= 2:
+            region = (SIDE + (ws[0] - curx) * W, TOP + (ws[1] - cury) * Hh, W - 2 * SIDE, Hh - TOP - BOTTOM)
+            tree = trees.get(ws)
+            ids = [v["id"] for v in vs]
+            for i in tree_ids(tree):
+                if i not in ids: tree = tree_remove(tree, i)
+            for i in ids:
+                if i not in tree_ids(tree): tree = tree_add(tree, i, region)
+            trees[ws] = tree
+            rs = {}
+            leaf_rects(tree, region, rs)
+            for v in vs:
+                isnew = v["id"] not in saved
+                if isnew: saved[v["id"]] = to_local(dict(v["geometry"]), ws)
+                tiled.add(v["id"])
+                x, y, w, h = rs[v["id"]]
+                tgt = {"x": int(x), "y": int(y), "width": int(w), "height": int(h)}
+                if isnew:
+                    # a window that has just opened goes straight to its zone, it does not grow there from its own size:
+                    # the opening animation of the compositor does the entrance
+                    fast_call(path, "window-rules/configure-view", {"id": v["id"], "geometry": tgt})
+                    continue
+                mv.append((v["id"], dict(v["geometry"]), tgt))
+        else:
+            trees.pop(ws, None)
+            v = vs[0]
+            if v["id"] in tiled and v["id"] in saved:
+                g = saved.pop(v["id"]); tiled.discard(v["id"])
+                mv.append((v["id"], dict(v["geometry"]), to_world({k: int(g[k]) for k in ("x", "y", "width", "height")}, ws)))
+    animate(path, mv)
 
 def main():
     import fcntl
@@ -239,7 +255,7 @@ def main():
     while True:
         try:
             s = socket.socket(socket.AF_UNIX); s.connect(path)
-            send(s, {"method": "window-rules/events/watch", "data": {"events": ["view-mapped", "view-unmapped", "view-minimized", "view-fullscreen", "view-tiled"]}})
+            send(s, {"method": "window-rules/events/watch", "data": {"events": ["view-mapped", "view-unmapped", "view-minimized", "view-fullscreen", "view-tiled", "view-workspace-changed", "wset-workspace-changed"]}})
             recv(s)
             pending = False
             fast = False                  # a window just opened: lay out at once, do not wait
@@ -250,7 +266,7 @@ def main():
                     seen = conf_mtime(); pending = True; continue
                 if r:
                     ev = recv(s)
-                    if ev.get("event") in ("view-mapped", "view-unmapped", "view-minimized", "view-fullscreen", "view-tiled"):
+                    if ev.get("event") in ("view-mapped", "view-unmapped", "view-minimized", "view-fullscreen", "view-tiled", "view-workspace-changed"):
                         pending = True
                         if ev.get("event") == "view-mapped": fast = True
                 elif pending:
