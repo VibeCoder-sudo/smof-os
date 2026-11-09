@@ -1,20 +1,17 @@
 #!/usr/bin/python3 -I
-# smof-glitch : Beta Lab crash test. For one minute the screen and the sound fall apart more and more, then the kernel really panics.
-# The corruption is staged (a picture of the screen is torn up and the music is crushed), no real memory is overwritten. The panic at the end is real:
-# the disks are synced first, then the kernel is told to crash through sysrq, the computer stays stopped until it is switched off and on again.
-#   smof-glitch start     runs the whole test, Esc during the first 55 seconds stops it
-#   smof-glitch abort     stops a running test
-# For tests: SMOF_GLITCH_DRY=1 does not panic, SMOF_GLITCH_SECONDS=12 makes it shorter, SMOF_MPV and SMOF_GRIM name other programs.
-import os, sys, time, json, socket, shutil, subprocess, signal
+# smof-glitch : Beta Lab crash test. For one minute the memory of the user's own running programs is overwritten more and more while a song plays,
+# then the kernel panics. All of it is real, nothing is staged. The disks are synced right before the panic, the computer stays stopped until it is
+# switched off and on again.
+#   smof-glitch start     runs the whole test
+#   smof-glitch abort     stops a running test (Super+Shift+Esc)
+# For tests: SMOF_GLITCH_DRY=1 does not panic and touches nothing unless SMOF_GLITCH_PIDS names sacrificial programs, SMOF_GLITCH_SECONDS=12 makes it shorter.
+import os, sys, time, shutil, subprocess, signal
 
 URL = "https://www.youtube.com/watch?v=wvT8KrI1nvo"      # Uwa!! So Temperate, Toby Fox, UNDERTALE Soundtrack 006
 TOTAL = float(os.environ.get("SMOF_GLITCH_SECONDS", "60"))
 DRY = bool(os.environ.get("SMOF_GLITCH_DRY"))
 RT = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
 PIDF = RT + "/smof-glitch.pids"
-SOCK = RT + "/smof-glitch-mpv.sock"
-SHOT = "/tmp/smof-glitch-%d.png" % os.getuid()
-APP = os.environ.get("SMOF_GLITCH_APP", "/usr/share/smof/apps/glitch/shell.qml")
 
 def kill_all():
     try: pids = [int(x) for x in open(PIDF).read().split()]
@@ -25,23 +22,6 @@ def kill_all():
             except OSError: pass
     try: os.remove(PIDF)
     except OSError: pass
-    for f in (SOCK, SHOT):
-        try: os.remove(f)
-        except OSError: pass
-
-def mpv_cmd(*cmd):
-    try:
-        s = socket.socket(socket.AF_UNIX); s.settimeout(1); s.connect(SOCK)
-        s.sendall((json.dumps({"command": list(cmd)}) + "\n").encode()); s.close()
-    except Exception: pass
-
-# what the sound goes through while the test runs, from light to heavy
-def stage(k):
-    if k < 0.25: return "", 1.0 - 0.1 * k
-    if k < 0.5:  return "lavfi=[acrusher=bits=10:mode=log:mix=0.4]", 1.0 - 0.2 * k
-    if k < 0.75: return "lavfi=[acrusher=bits=6:mix=0.7,vibrato=f=6:d=0.4]", 1.0 - 0.3 * k
-    if k < 0.92: return "lavfi=[acrusher=bits=3:mix=1,tremolo=f=18:d=1,vibrato=f=10:d=0.8]", 1.0 - 0.4 * k
-    return "lavfi=[acrusher=bits=1:mix=1,tremolo=f=40:d=1]", 0.55
 
 def start():
     if os.path.exists(PIDF):
@@ -50,41 +30,28 @@ def start():
         print("no permission"); return 1
     pids = [os.getpid()]
     open(PIDF, "w").write(str(os.getpid()))
-    try:
-        subprocess.run([os.environ.get("SMOF_GRIM", "grim"), SHOT], timeout=15)
-        env = dict(os.environ, SMOF_GLITCH_SECONDS=str(TOTAL), SMOF_GLITCH_SHOT=SHOT)
-        ov = subprocess.Popen(["quickshell", "-p", APP], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); pids.append(ov.pid)
-        mpv = os.environ.get("SMOF_MPV", "mpv")
-        if shutil.which(mpv):
-            args = [mpv, "--no-video", "--no-terminal", "--loop-file=inf", "--input-ipc-server=" + SOCK]
-            if shutil.which("yt-dlp"): args += ["--ytdl-format=bestaudio", "--no-playlist", URL]
-            else: args += ["av://lavfi:sine=f=330:r=44100"]       # no network tools: a plain tone that is crushed the same way
-            p = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); pids.append(p.pid)
-        # the real part: bytes of the user's own programs are overwritten, more and more
-        helper = [os.environ.get("SMOF_GLITCH_MEM", "/usr/local/bin/smof-glitch-mem"), "--uid", str(os.getuid()), "--seconds", str(TOTAL - 1), "--pidfile", PIDF,
-                  "--exclude", ",".join(str(x) for x in pids)]
-        hcmd = ([] if DRY else ["sudo", "-n", "/usr/bin/python3", "-I"]) + helper + (["--dry"] if DRY else [])
-        if DRY and os.environ.get("SMOF_GLITCH_MEM"): hcmd = ["python3", "-I"] + helper
-        hp = subprocess.Popen(hcmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); pids.append(hp.pid)
-        open(PIDF, "w").write(" ".join(str(x) for x in pids))
-        t0 = time.time(); last = None
-        while time.time() - t0 < TOTAL:
-            if not os.path.exists(PIDF): return 0               # aborted
-            k = (time.time() - t0) / TOTAL
-            filt, speed = stage(k)
-            if filt != last:
-                mpv_cmd("af", "set", filt); last = filt
-            mpv_cmd("set_property", "speed", round(speed, 3))
-            time.sleep(0.5)
-        if not os.path.exists(PIDF): return 0
-        subprocess.run(["sync"])
-        if DRY:
-            print("PANIC (dry run)"); kill_all(); return 0
-        subprocess.run(["sudo", "-n", "sh", "-c", "echo 1 > /proc/sys/kernel/sysrq; echo c > /proc/sysrq-trigger"])
-        time.sleep(5)                                              # still alive: the panic did not happen, clean up
-        kill_all(); return 2
-    finally:
-        pass
+    mpv = os.environ.get("SMOF_MPV", "mpv")
+    if shutil.which(mpv):
+        args = [mpv, "--no-video", "--no-terminal", "--loop-file=inf"]
+        args += ["--ytdl-format=bestaudio", "--no-playlist", URL] if shutil.which("yt-dlp") else ["av://lavfi:sine=f=330:r=44100"]
+        p = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); pids.append(p.pid)
+    helper = [os.environ.get("SMOF_GLITCH_MEM", "/usr/local/bin/smof-glitch-mem"), "--uid", str(os.getuid()), "--seconds", str(TOTAL), "--pidfile", PIDF,
+              "--exclude", ",".join(str(x) for x in pids)]
+    if DRY: hcmd = ["python3", "-I"] + helper + (["--dry"] if not os.environ.get("SMOF_GLITCH_PIDS") else [])
+    else: hcmd = ["sudo", "-n", "/usr/bin/python3", "-I"] + helper
+    hp = subprocess.Popen(hcmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); pids.append(hp.pid)
+    open(PIDF, "w").write(" ".join(str(x) for x in pids))
+    t0 = time.time()
+    while time.time() - t0 < TOTAL:
+        if not os.path.exists(PIDF): return 0               # aborted
+        time.sleep(0.5)
+    if not os.path.exists(PIDF): return 0
+    subprocess.run(["sync"])
+    if DRY:
+        print("PANIC (dry run)"); kill_all(); return 0
+    subprocess.run(["sudo", "-n", "sh", "-c", "echo 1 > /proc/sys/kernel/sysrq; echo c > /proc/sysrq-trigger"])
+    time.sleep(5)                                              # still alive: the panic did not happen, clean up
+    kill_all(); return 2
 
 a = sys.argv[1:] or ["start"]
 if a[0] == "start": sys.exit(start())

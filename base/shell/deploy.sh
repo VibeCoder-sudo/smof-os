@@ -3,7 +3,7 @@
 # then sends everything to the VM: shells, icons, wallpaper layers, and makes /var/lib/smof/theme
 cd "$(dirname "$0")/.."
 V=vm; H=$(cat $V/ip.txt); O="-i $V/id_mjos -o BatchMode=yes -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new"
-for d in greeter apps/wallpaper apps/bar apps/dock apps/notifd apps/launcher apps/settings apps/files apps/auth apps/store apps/upscaler apps/glitch; do cp shell/shared/*.qml shell/$d/; done
+for d in greeter apps/wallpaper apps/bar apps/dock apps/notifd apps/launcher apps/settings apps/files apps/auth apps/store apps/upscaler; do cp shell/shared/*.qml shell/$d/; done
 ssh $O root@$H "mkdir -p /usr/share/smof/apps"
 scp -q $O -r shell/greeter root@$H:/usr/share/smof/
 scp -q $O -r shell/apps root@$H:/usr/share/smof/

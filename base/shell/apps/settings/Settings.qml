@@ -827,10 +827,9 @@ FloatingWindow {
                 visible: win.page === "beta"
                 width: parent.width; spacing: 18
                 Card {
-                    Row2 { label: "Crash test"; sub: "For one minute the screen and the sound fall apart more and more, bytes in the memory of your open programs are overwritten, then the computer crashes on purpose with a kernel panic. After that it stays stopped until you switch it off and on again."; last: false }
-                    Row2 { label: "Unsaved work will be lost"; sub: "Save your files first. Esc stops the test during the first 55 seconds. Disks are synced before the crash, but open programs will be damaged."
+                    Row2 { label: "Crash test"; sub: "For one minute the memory of your running programs is overwritten more and more while the song plays, then the kernel panics and the computer stops. Save your work first. Super+Shift+Esc stops the test."
                         Switch { on: win.glSure; onToggled: (v) => win.glSure = v } }
-                    Row2 { label: win.glRunning ? "Running" : "Start"; sub: "The music is Uwa!! So Temperate from the Undertale soundtrack. It is played from YouTube, so it needs the internet. Without it a plain tone plays."; last: true
+                    Row2 { label: win.glRunning ? "Running" : "Start"; sub: "Song: Uwa!! So Temperate, UNDERTALE Soundtrack, from YouTube. Needs the internet, without it a plain tone plays."; last: true
                         Btn { label: win.glRunning ? "Running" : "Start 60 second test"; danger: true
                             onClicked: { if (win.glSure && !win.glRunning) { win.glRunning = true; glP.running = true } } } }
                 }
