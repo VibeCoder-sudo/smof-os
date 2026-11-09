@@ -1,0 +1,36 @@
+#!/usr/bin/python3 -I
+# smof-passwd-root : changes the sign-in secret of the user who called sudo. The settings run it as
+#   sudo -S -k -p '' /usr/local/sbin/smof-passwd-root
+# and send on stdin: the current password (sudo reads and checks it), then the line SMOF-PASSWD, then MODE (pin or password), then the new secret.
+# A user with the sign-in rule without password gets no password line eaten, so everything before the marker is ignored.
+# The kind of secret is written into /var/lib/smof/user.json ("auth"), the lock screen reads it to show the PIN dots or a password field.
+# Tests: SMOF_STATE_DIR, SMOF_CHPASSWD and SUDO_USER can be set.
+import json, os, re, subprocess, sys
+S = os.environ.get("SMOF_STATE_DIR", "/var/lib/smof")
+CH = os.environ.get("SMOF_CHPASSWD", "chpasswd")
+def fail(t): print("error: " + t); sys.exit(1)
+lines = sys.stdin.read().split("\n")
+if "SMOF-PASSWD" not in lines: fail("bad request")
+i = lines.index("SMOF-PASSWD")
+try: mode, new = lines[i + 1], lines[i + 2]
+except IndexError: fail("bad request")
+user = os.environ.get("SUDO_USER", "")
+if not user or user == "root" or not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", user): fail("no user")
+if mode == "pin":
+    if not re.fullmatch(r"[0-9]{4}", new): fail("a PIN is four digits")
+elif mode == "password":
+    if len(new) < 8: fail("a password needs at least 8 characters")
+    if len(new) > 64: fail("a password can have at most 64 characters")
+    if any(ord(c) < 32 or ord(c) == 127 for c in new): fail("the password has a character that is not allowed")
+else: fail("bad request")
+r = subprocess.run([CH], input="%s:%s\n" % (user, new), capture_output=True, text=True)
+if r.returncode != 0: fail((r.stderr.strip().splitlines() or ["the password could not be changed"])[-1])
+try:
+    p = os.path.join(S, "user.json")
+    o = json.load(open(p))
+    if o.get("user") == user:
+        o["auth"] = mode
+        json.dump(o, open(p, "w"))
+        os.chmod(p, 0o644)
+except Exception: pass
+print("ok")

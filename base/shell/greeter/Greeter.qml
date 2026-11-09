@@ -12,7 +12,8 @@ Item {
     property string oobeState: ""          // pending or preview on a fresh system, empty once set up
     readonly property bool oobe: phase === "oobe"
     property string pin: ""
-    property string sub: "Type your 4 digit PIN"
+    readonly property bool usePw: root.userInfo.auth === "password"          // the account has a password, not a PIN
+    property string sub: root.usePw ? "Type your password" : "Type your 4 digit PIN"
     property int step: 0
     readonly property bool inLock: phase === "pre" || phase === "lock"
     readonly property bool login: !inLock
@@ -74,7 +75,7 @@ Item {
         if (Greetd.available) Greetd.createSession(root.userInfo.user)
         else devAuth.start()
     }
-    function fail() { pin = ""; phase = "pin"; sub = "Wrong PIN, try again"; shake.start() }
+    function fail() { pin = ""; phase = "pin"; sub = root.usePw ? "Wrong password, try again" : "Wrong PIN, try again"; shake.start() }
     function ok() {
         sub = "Signing in..."; phase = "launch"
         if (Greetd.available) launchT.start()
@@ -82,7 +83,7 @@ Item {
     }
     Timer { id: devAuth; interval: 700; onTriggered: root.pin === "1234" ? root.ok() : root.fail() }
     Timer { id: launchT; interval: 800; onTriggered: Greetd.launch(["/usr/local/bin/smof-session"]) }
-    Timer { id: resetT; interval: 2500; onTriggered: { root.pin = ""; root.sub = "Type your 4 digit PIN"; root.step = 0; root.phase = "lock"; intro.restart() } }
+    Timer { id: resetT; interval: 2500; onTriggered: { root.pin = ""; root.sub = root.usePw ? "Type your password" : "Type your 4 digit PIN"; root.step = 0; root.phase = "lock"; intro.restart() } }
     Connections {
         target: Greetd
         function onAuthMessage(message, error, responseRequired, echoResponse) { if (responseRequired) Greetd.respond(root.pin) }
@@ -95,6 +96,11 @@ Item {
         if (phase === "lock") { phase = "pin"; return }
         if (phase === "pin") {
             if (e.key === Qt.Key_Backspace) pin = pin.slice(0, -1)
+            else if (root.usePw) {
+                // a password: any characters, Return sends it
+                if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && pin.length > 0) submit()
+                else if (e.text.length === 1 && e.text.charCodeAt(0) >= 32 && e.text.charCodeAt(0) !== 127 && pin.length < 64) pin += e.text
+            }
             else if (/^[0-9]$/.test(e.text)) { pin += e.text; if (pin.length >= 4) submit() }
         }
     }
@@ -195,14 +201,15 @@ Item {
                 id: dots
                 opacity: root.phase === "auth" || root.phase === "launch" ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
-                x: 87; y: 218; spacing: 18
+                readonly property real base: (parent.width - width) / 2
+                x: base; y: 218; spacing: 18
                 Repeater {
-                    model: 4
+                    model: root.usePw ? Math.min(Math.max(root.pin.length, 1), 14) : 4
                     Rectangle {
                         width: 18; height: 18; radius: 9
-                        color: root.pin.length > index ? "#FFFFFF" : "transparent"
+                        color: (root.usePw ? root.pin.length > 0 : root.pin.length > index) ? "#FFFFFF" : "transparent"
                         border.color: "#E6FFFFFF"; border.width: 2
-                        scale: root.pin.length > index ? 1.15 : 1
+                        scale: (root.usePw ? root.pin.length > 0 : root.pin.length > index) ? 1.15 : 1
                         Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
                         Behavior on color { ColorAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0] } }
                     }
@@ -211,9 +218,9 @@ Item {
             T { y: 262; width: 300; horizontalAlignment: Text.AlignHCenter; text: root.sub; font.pixelSize: 18; color: "#CCFFFFFF" }
             SequentialAnimation {
                 id: shake
-                NumberAnimation { target: dots; property: "x"; to: 77; duration: 90 }
-                NumberAnimation { target: dots; property: "x"; to: 97; duration: 90 }
-                NumberAnimation { target: dots; property: "x"; to: 87; duration: 90 }
+                NumberAnimation { target: dots; property: "x"; to: dots.base - 10; duration: 90 }
+                NumberAnimation { target: dots; property: "x"; to: dots.base + 10; duration: 90 }
+                NumberAnimation { target: dots; property: "x"; to: dots.base; duration: 90 }
             }
         }
     }

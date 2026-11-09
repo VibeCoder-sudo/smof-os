@@ -1,0 +1,24 @@
+#!/usr/bin/python3 -I
+# smof-passwd : changes the sign-in secret of the user who runs it. stdin: current password, mode (pin or password), new secret.
+# Step one asks sudo to check the current password with exactly ONE line, so a typo counts as one failed try, not three (the system locks an
+# account for ten minutes after three failed tries). Step two runs the root helper with the sudo permission just granted.
+# Prints "ok" or "error: ...".
+import os, subprocess, sys
+lines = sys.stdin.read().split("\n")
+if len(lines) < 3: print("error: bad request"); sys.exit(1)
+cur, mode, new = lines[0], lines[1], lines[2]
+SUDO = os.environ.get("SMOF_SUDO", "/usr/bin/sudo")
+HELPER = os.environ.get("SMOF_PASSWD_ROOT", "/usr/local/sbin/smof-passwd-root")
+# the new secret is looked at first, a wrong request must not cost a password try
+if mode == "pin" and not (len(new) == 4 and new.isdigit()): print("error: a PIN is four digits"); sys.exit(1)
+if mode == "password" and len(new) < 8: print("error: a password needs at least 8 characters"); sys.exit(1)
+subprocess.run([SUDO, "-K"], capture_output=True)                 # forget old credentials so the password is really checked
+r = subprocess.run([SUDO, "-S", "-p", "", "-v"], input=cur + "\n", capture_output=True, text=True)
+if r.returncode != 0:
+    print("error: the current password is not right"); sys.exit(1)
+p = subprocess.run([SUDO, "-n", HELPER], input="SMOF-PASSWD\n%s\n%s\n" % (mode, new), capture_output=True, text=True)
+subprocess.run([SUDO, "-K"], capture_output=True)                 # and do not leave the permission lying around
+out = (p.stdout.strip().splitlines() or [""])[-1]
+if out == "ok" or out.startswith("error: "): print(out)
+else: print("error: " + ((p.stderr.strip().splitlines() or ["the change did not run"])[-1]))
+sys.exit(0 if out == "ok" else 1)

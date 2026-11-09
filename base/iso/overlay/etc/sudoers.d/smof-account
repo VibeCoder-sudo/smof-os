@@ -1,0 +1,2 @@
+# a user of the wheel group may change his own sign-in secret from the settings, sudo asks for the current password
+%wheel ALL=(root) /usr/local/sbin/smof-passwd-root

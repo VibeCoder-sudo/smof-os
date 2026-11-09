@@ -167,6 +167,30 @@ FloatingWindow {
     }
     function upDoCheck() { win.upChecking = true; win.upMsg = "Checking"; upCheck.running = true }
 
+
+    // Account: change the PIN or the password. sudo asks for the current password and passes the new one to the root helper.
+    property string acMode: (win.user && win.user.auth === "password") ? "password" : "pin"
+    property string acMsg: ""
+    property bool acBusy: false
+    Process {
+        id: acP
+        property string cur: ""
+        property string mode: "pin"
+        property string neu: ""
+        command: ["/usr/local/bin/smof-passwd"]
+        stdinEnabled: true
+        onStarted: { write(cur + "\n" + mode + "\n" + neu + "\n"); stdinEnabled = false }
+        stdout: SplitParser { onRead: (line) => { if (line.indexOf("error: ") === 0) win.acMsg = line.charAt(7).toUpperCase() + line.slice(8); else if (line === "ok") win.acMsg = "Done. Use it the next time you sign in" } }
+        onExited: (code) => { win.acBusy = false; cur = ""; neu = "" }
+    }
+    function acApply(cur, a, b) {
+        if (a !== b) { win.acMsg = "The two new entries are not the same"; return }
+        if (win.acMode === "pin" && !/^[0-9]{4}$/.test(a)) { win.acMsg = "A PIN is four digits"; return }
+        if (win.acMode === "password" && a.length < 8) { win.acMsg = "A password needs at least 8 characters"; return }
+        win.acMsg = ""; win.acBusy = true
+        acP.cur = cur; acP.mode = win.acMode; acP.neu = a; acP.stdinEnabled = true; acP.running = true
+    }
+
     // ---- one helper for the small command line tools that answer with JSON ----
     component Cmd: Process {
         id: cm
@@ -202,7 +226,7 @@ FloatingWindow {
     function snapOpen(id, sub) { win.snapSel = id; win.snapSub = sub; snFiles.args = [id, sub]; snFiles.running = true }
     onPageChanged: { if (page === "network") wScan(); if (page === "bluetooth") btStatus.running = true; if (page === "night") nlGet.running = true; if (page === "travel") snList.running = true; if (page === "updates" && win.upList.length === 0 && !win.upBusy) win.upDoCheck() }
 
-    FileView { id: uj; path: "/var/lib/smof/user.json"; blockLoading: true; printErrors: false }
+    FileView { id: uj; path: "/var/lib/smof/user.json"; blockLoading: true; printErrors: false; watchChanges: true; onFileChanged: reload() }
     readonly property var user: { try { return JSON.parse(uj.text()) } catch (e) { return { name: Quickshell.env("USER"), user: Quickshell.env("USER") } } }
 
     // ---- screen resolution, refresh rate and scale (smof-display) ----
@@ -939,7 +963,27 @@ FloatingWindow {
                     }
                 }
                 Card {
-                    Row2 { label: "PIN"; sub: "Changing it from here comes later. For now: passwd in the terminal"; last: true; Val { text: "Protected" } }
+                    Row2 { label: "Sign in with"; sub: win.acMode === "pin" ? "A four digit PIN" : "A password with at least 8 characters"; last: false
+                        Seg { options: ["PIN", "Password"]; index: win.acMode === "pin" ? 0 : 1; onPicked: (i) => { win.acMode = i === 0 ? "pin" : "password"; win.acMsg = "" } } }
+                    Item {
+                        width: parent.width; height: 3 * 58 + 78
+                        Column {
+                            x: 20; width: parent.width - 40; spacing: 10; y: 4
+                            Rectangle { width: parent.width; height: 48; radius: 24; color: Theme.glass2
+                                TextInput { id: acCur; anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 20; verticalAlignment: TextInput.AlignVCenter; echoMode: TextInput.Password; font.family: "Google Sans Flex"; font.pixelSize: 16; color: Theme.ink; clip: true; KeyNavigation.tab: acNew }
+                                T { visible: acCur.text === ""; x: 20; anchors.verticalCenter: parent.verticalCenter; text: "Current " + (win.user && win.user.auth === "password" ? "password" : "PIN"); color: Theme.i5; font.pixelSize: 16 } }
+                            Rectangle { width: parent.width; height: 48; radius: 24; color: Theme.glass2
+                                TextInput { id: acNew; anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 20; verticalAlignment: TextInput.AlignVCenter; echoMode: TextInput.Password; font.family: "Google Sans Flex"; font.pixelSize: 16; color: Theme.ink; clip: true; KeyNavigation.tab: acRep }
+                                T { visible: acNew.text === ""; x: 20; anchors.verticalCenter: parent.verticalCenter; text: win.acMode === "pin" ? "New PIN" : "New password"; color: Theme.i5; font.pixelSize: 16 } }
+                            Rectangle { width: parent.width; height: 48; radius: 24; color: Theme.glass2
+                                TextInput { id: acRep; anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 20; verticalAlignment: TextInput.AlignVCenter; echoMode: TextInput.Password; font.family: "Google Sans Flex"; font.pixelSize: 16; color: Theme.ink; clip: true
+                                    onAccepted: win.acApply(acCur.text, acNew.text, acRep.text) }
+                                T { visible: acRep.text === ""; x: 20; anchors.verticalCenter: parent.verticalCenter; text: "Repeat it"; color: Theme.i5; font.pixelSize: 16 } }
+                            Row { spacing: 14
+                                Btn { label: win.acBusy ? "Changing" : "Change"; onClicked: { if (!win.acBusy) { win.acApply(acCur.text, acNew.text, acRep.text) } } }
+                                T { anchors.verticalCenter: parent.verticalCenter; text: win.acMsg; font.pixelSize: 14; color: win.acMsg.indexOf("Done") === 0 ? Theme.acc : Theme.errfg; width: 420; wrapMode: Text.WordWrap } }
+                        }
+                    }
                 }
             }
 
