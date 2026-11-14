@@ -18,7 +18,7 @@ _wfs=${_wf%.*}                                    # the series, for example 0.11
 _wfn=${_wfs%%.*}.$(( ${_wfs#*.} + 1 ))            # the next series, for example 0.12
 _wlr=$(pacman -Qq 2>/dev/null | grep -E '^wlroots[0-9.]+$' | head -1)
 depends=("wayfire>=$_wfs" "wayfire<$_wfn" pixman ${_wlr:+"$_wlr"})
-makedepends=(gcc pkgconf meson ninja git glm wayland-protocols)
+makedepends=(gcc pkgconf meson ninja cmake git glm vulkan-headers wayland-protocols)
 source=("pixdecor::git+https://github.com/soreau/pixdecor.git")
 sha256sums=(SKIP)
 options=(!strip)
