@@ -8,7 +8,7 @@ import QtQuick.Effects
 Item {
     id: root
     property string phase: "pre"          // pre, lock, pin, auth, launch, oobe
-    property var userInfo: ({ name: "MJ", user: "mj", avatar: "mj.jpg" })
+    property var userInfo: ({ name: "Smof", user: "smof", avatar: "" })
     property string oobeState: ""          // pending or preview on a fresh system, empty once set up
     readonly property bool oobe: phase === "oobe"
     property string pin: ""
