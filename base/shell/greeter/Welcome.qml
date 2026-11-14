@@ -26,7 +26,7 @@ Item {
         var r = []
         for (var i = 0; i < list.length; i++) {
             var d = list[i]
-            r.push({ kind: "free", disk: d.path, part: "", title: w.nice(d) + "  " + w.fmt(d.size), sub: w.usable(d) ? w.fmt(w.freeOf(d)) + " free space, Smof takes the largest piece" : "Not enough free space (" + w.fmt(w.freeOf(d)) + ")", ok: w.usable(d) })
+            r.push({ kind: "free", disk: d.path, part: "", title: w.nice(d) + "  " + w.fmt(d.size), sub: w.usable(d) ? (d.blank ? "Empty disk, Smof sets it up and uses all " + w.fmt(w.freeOf(d)) : w.fmt(w.freeOf(d)) + " free space, Smof takes the largest piece") : "Not enough free space (" + w.fmt(w.freeOf(d)) + ")", ok: w.usable(d) })
             var ps = w.emptyParts(d)
             for (var j = 0; j < ps.length; j++) r.push({ kind: "part", disk: d.path, part: ps[j].path, title: "Empty partition " + ps[j].path + "  " + w.fmt(ps[j].size), sub: "On " + w.nice(d) + ", Smof uses all of it", ok: true })
         }
@@ -93,7 +93,7 @@ Item {
 
         T { visible: w.mode === "disks"; text: "Where should Smof go?"; font.pixelSize: 40; w: 600; color: "#FFFFFF" }
         T { visible: w.mode === "disks"; width: parent.width; wrapMode: Text.WordWrap; font.pixelSize: 16; color: "#B8FFFFFF"
-            text: w.disks.length === 0 ? "Looking at the disks…" : "Smof goes into free space or an empty partition. Nothing that is already there is deleted or formatted. It needs at least " + w.needGb + " GB." }
+            text: w.disks.length === 0 ? "Looking at the disks…" : "Smof goes into free space, an empty partition or an empty disk. Nothing that is already there is deleted or formatted. It needs at least " + w.needGb + " GB." }
         Column {
             visible: w.mode === "disks"; width: parent.width; spacing: 10
             Repeater {

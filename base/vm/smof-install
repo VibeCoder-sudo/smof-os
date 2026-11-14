@@ -40,11 +40,42 @@ def free_regions(dev):
             res.append((int(p[1].rstrip("B")), int(p[2].rstrip("B"))))
     return res
 
+def is_blank(disk):
+    """a disk with nothing on it at all: no partition table, no partitions, no file system, no signatures.
+    Only then do we may write a fresh partition table to it."""
+    try:
+        j = json.loads(sh(["lsblk", "-J", "-b", "-o", "NAME,PTTYPE,FSTYPE", disk]))["blockdevices"][0]
+    except Exception:
+        return False
+    if j.get("children") or j.get("pttype") or j.get("fstype"):
+        return False
+    return not sh(["wipefs", "-n", disk], check=False).strip()
+
+ESP_MB = 512
+
+def new_part(disk, before):
+    sh(["partprobe", disk], check=False); sh(["udevadm", "settle"], check=False); time.sleep(1)
+    after = {c["path"] for d in disks() if d["path"] == disk for c in d.get("children", []) or []}
+    new = sorted(after - before)
+    if len(new) != 1:
+        raise RuntimeError("could not find the new partition")
+    return new[0]
+
+def children_of(disk):
+    return {c["path"] for d in disks() if d["path"] == disk for c in d.get("children", []) or []}
+
 def do_list():
     out = []
     for d in disks():
+        blank = is_blank(d["path"])
+        if blank:
+            # parted cannot print a disk that has no partition table, so the whole disk is the free space
+            size = int(d["size"])
+            free = [{"start": 1048576, "end": size - 1048576, "size": size - 2 * 1048576}] if size > 64 * 1048576 else []
+        else:
+            free = [{"start": s, "end": e, "size": e - s + 1} for s, e in free_regions(d["path"]) if e - s + 1 >= 64 * 1048576]
         item = {"path": d["path"], "size": int(d["size"]), "model": (d.get("model") or "").strip(), "tran": d.get("tran"), "removable": bool(d.get("rm")),
-                "partitions": [], "free": [{"start": s, "end": e, "size": e - s + 1} for s, e in free_regions(d["path"]) if e - s + 1 >= 64 * 1048576]}
+                "blank": blank, "partitions": [], "free": free}
         for c in d.get("children", []) or []:
             item["partitions"].append({"path": c["path"], "size": int(c["size"]), "fstype": c.get("fstype"), "label": c.get("label"),
                                        "esp": (c.get("parttype") or "").lower() == ESP_TYPE, "mounted": c.get("mountpoint")})
@@ -54,11 +85,14 @@ def do_list():
 def part_path(disk, n):
     return disk + ("p" if disk[-1].isdigit() else "") + str(n)
 
-def find_esp(disk, exclude_labels=("SMOF_202611",)):
+def find_esp(disk, exclude_labels=("SMOF_202611", "ARCHISO_EFI")):
     """the EFI partition to put the boot loader on: one on the same disk if there is one, otherwise the one on any disk.
-    Windows leaves its own, we only add a folder to it."""
+    Windows leaves its own, we only add a folder to it. The boot partition of the live medium and any removable disk are never used,
+    they go away with the stick."""
     cands = []
     for d in disks():
+        if d.get("rm") and d["path"] != disk:
+            continue
         for c in d.get("children", []) or []:
             if (c.get("parttype") or "").lower() == ESP_TYPE and (c.get("fstype") or "") == "vfat" and c.get("label") not in exclude_labels:
                 cands.append((0 if d["path"] == disk else 1, int(c["size"]), c["path"]))
@@ -74,6 +108,8 @@ def run(a):
     disk = a.disk
     if not os.path.exists(disk):
         raise RuntimeError("no such disk " + disk)
+    if not a.no_boot and not os.path.isdir("/sys/firmware/efi"):
+        raise RuntimeError("this computer started in the old BIOS mode and Smof needs UEFI. In a virtual machine turn on UEFI (OVMF) in its settings and start again")
     # 1. the partition
     say(step="partition", pct=2, text="Preparing the disk")
     if a.part:
@@ -81,22 +117,34 @@ def run(a):
         if sh(["blkid", "-o", "value", "-s", "TYPE", part], check=False).strip():
             raise RuntimeError(part + " already has a file system, I only use empty space")
     else:
+        if is_blank(disk):
+            say(step="partition", pct=3, text="Writing a partition table to the empty disk")
+            sh(["sgdisk", "-o", disk])
+            sh(["partprobe", disk], check=False); sh(["udevadm", "settle"], check=False); time.sleep(1)
+        # an EFI partition is needed for the boot loader. If there is none on any disk, one is made at the start of the free space
+        need_esp = (not a.no_boot) and not (a.esp or find_esp(disk))
+        if need_esp:
+            pt = sh(["lsblk", "-dn", "-o", "PTTYPE", disk], check=False).strip()
+            if pt != "gpt":
+                raise RuntimeError("there is no EFI partition and this disk does not use a GPT partition table (%s), I do not convert existing disks" % (pt or "none"))
         regs = sorted(free_regions(disk), key=lambda r: r[1] - r[0], reverse=True)
-        need = a.min_gb * 1024 ** 3
+        need = a.min_gb * 1024 ** 3 + (ESP_MB * 1048576 if need_esp else 0)
         if not regs or regs[0][1] - regs[0][0] + 1 < need:
             raise RuntimeError("no free space of at least %d GB on %s, shrink a partition first" % (a.min_gb, disk))
         s, e = regs[0]
         ss = int(sh(["blockdev", "--getss", disk]).strip())
         start = (-(-s // 1048576)) * 1048576 // ss          # aligned to 1 MiB
         end = ((e + 1) // 1048576) * 1048576 // ss - 1
-        before = {c["path"] for d in disks() if d["path"] == disk for c in d.get("children", []) or []}
+        if need_esp:
+            esp_end = start + ESP_MB * 1048576 // ss - 1
+            before = children_of(disk)
+            sh(["sgdisk", "-n", "0:%d:%d" % (start, esp_end), "-t", "0:ef00", "-c", "0:EFI System", disk])
+            a.esp = new_part(disk, before)
+            sh(["mkfs.fat", "-F", "32", "-n", "SMOFEFI", a.esp])
+            start = esp_end + 1
+        before = children_of(disk)
         sh(["sgdisk", "-n", "0:%d:%d" % (start, end), "-t", "0:8300", "-c", "0:Smof", disk])
-        sh(["partprobe", disk], check=False); sh(["udevadm", "settle"], check=False); time.sleep(1)
-        after = {c["path"] for d in disks() if d["path"] == disk for c in d.get("children", []) or []}
-        new = sorted(after - before)
-        if len(new) != 1:
-            raise RuntimeError("could not find the new partition")
-        part = new[0]
+        part = new_part(disk, before)
     say(step="partition", pct=6, text="Partition " + part)
     # 2. file system
     sh(["mkfs.ext4", "-F", "-q", "-L", "SMOF_ROOT", part])
