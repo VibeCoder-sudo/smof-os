@@ -78,3 +78,19 @@ bluez-utils
 wlsunset
 wf-recorder
 pacman-contrib
+# battery and power on laptops
+tlp
+iw
+hdparm
+# screen sharing for browsers and calls, picture and PDF viewers
+xdg-desktop-portal
+xdg-desktop-portal-wlr
+imv
+zathura
+zathura-pdf-mupdf
+# laptop screen brightness keys, archives, a text editor
+brightnessctl
+zip
+unzip
+7zip
+mousepad

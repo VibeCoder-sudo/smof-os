@@ -8,7 +8,7 @@ arch=(any)
 url='https://github.com/VibeCoder-sudo/smof-os'
 license=(custom)
 depends=(wayfire quickshell foot greetd seatd networkmanager python python-numpy python-sentencepiece rsync wl-clipboard cliphist wtype grim slurp)
-optdepends=('bluez-utils: Bluetooth' 'wlsunset: Night Light' 'wf-recorder: screen recording' 'ncnn: Smof upscaler')
+optdepends=('smof-wayfire-plugins: window frames, rounded corners and smooth window motion' 'bluez-utils: Bluetooth' 'wlsunset: Night Light' 'wf-recorder: screen recording' 'ncnn: Smof upscaler')
 backup=()
 options=(!strip)
 

@@ -151,6 +151,9 @@ ln -sf /etc/systemd/system/smof-hotfix.service "$A/etc/systemd/system/multi-user
 ln -sf /etc/systemd/system/smof-rawlog.service "$A/etc/systemd/system/multi-user.target.wants/smof-rawlog.service"
 ln -sf /usr/lib/systemd/system/bluetooth.service "$A/etc/systemd/system/multi-user.target.wants/bluetooth.service"
 ln -sf /usr/lib/systemd/system/seatd.service "$A/etc/systemd/system/multi-user.target.wants/seatd.service"
+ln -sf /usr/lib/systemd/system/tlp.service "$A/etc/systemd/system/multi-user.target.wants/tlp.service"
+# the clock: without it https pages and package downloads fail on a wrong date
+ln -sf /usr/lib/systemd/system/systemd-timesyncd.service "$A/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service"
 ln -sf /usr/lib/systemd/system/NetworkManager.service "$A/etc/systemd/system/multi-user.target.wants/NetworkManager.service"
 rm -f "$A/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" "$A/etc/systemd/system/sockets.target.wants/systemd-networkd.socket" 2>/dev/null || true
 # permissions that matter, on top of the ones the base profile sets

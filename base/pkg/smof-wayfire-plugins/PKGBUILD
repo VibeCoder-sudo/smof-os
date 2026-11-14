@@ -1,0 +1,44 @@
+# smof-wayfire-plugins : the Wayfire plugins Smof needs, built against the Wayfire of the system they are installed on.
+#   rounded-corners   rounded corners and shadows (our port)
+#   smooth-geometry   windows glide to a new size and place (ours)
+#   pixdecor          window frames (upstream, soreau/pixdecor)
+# A Wayfire plugin only works with the Wayfire it was built for. So this package says which Wayfire series it fits (wayfire>=0.11 and <0.12),
+# and pacman will not move Wayfire to the next series until a rebuilt package from the Smof repository is available.
+# Build from a checkout of the Smof tree on x86_64 Arch: SMOF_BASE=/path/to/base SMOF_PKGVER=20261114.1 makepkg -f
+pkgname=smof-wayfire-plugins
+pkgver=${SMOF_PKGVER:-0.1}
+pkgrel=1
+pkgdesc='Wayfire plugins for the Smof desktop: rounded corners, smooth window motion, window frames'
+arch=(x86_64 aarch64)
+url='https://github.com/VibeCoder-sudo/smof-os'
+license=(GPL3)
+_wf=$(pacman -Q wayfire 2>/dev/null | cut -d' ' -f2 | sed 's/-.*//')
+_wf=${_wf:-0.11.0}
+_wfs=${_wf%.*}                                    # the series, for example 0.11
+_wfn=${_wfs%%.*}.$(( ${_wfs#*.} + 1 ))            # the next series, for example 0.12
+_wlr=$(pacman -Qq 2>/dev/null | grep -E '^wlroots[0-9.]+$' | head -1)
+depends=("wayfire>=$_wfs" "wayfire<$_wfn" pixman ${_wlr:+"$_wlr"})
+makedepends=(gcc pkgconf meson ninja git glm wayland-protocols)
+source=("pixdecor::git+https://github.com/soreau/pixdecor.git")
+sha256sums=(SKIP)
+options=(!strip)
+
+build() {
+  local B=${SMOF_BASE:?set SMOF_BASE to the base folder}
+  local wlr; wlr=$(pkg-config --list-all | awk '/^wlroots-/{print $1; exit}')
+  local flags=(-std=c++17 -O2 -shared -fPIC -DWLR_USE_UNSTABLE -DWAYFIRE_PLUGIN)
+  local libs; libs=$(pkg-config --cflags --libs wayfire "$wlr" pixman-1)
+  g++ "${flags[@]}" -o "$srcdir/librounded-corners.so" "$B/vm/rounded-corners/rounded-corners.cpp" $libs
+  g++ "${flags[@]}" -o "$srcdir/libsmooth-geometry.so" "$B/vm/smooth-geometry/smooth-geometry.cpp" $libs
+  meson setup "$srcdir/pixdecor-build" "$srcdir/pixdecor" --prefix=/usr --buildtype=release
+  ninja -C "$srcdir/pixdecor-build"
+}
+
+package() {
+  local B=${SMOF_BASE:?set SMOF_BASE to the base folder}
+  install -Dm755 "$srcdir/librounded-corners.so" "$pkgdir/usr/lib/wayfire/librounded-corners.so"
+  install -Dm755 "$srcdir/libsmooth-geometry.so" "$pkgdir/usr/lib/wayfire/libsmooth-geometry.so"
+  install -Dm644 "$B/vm/rounded-corners/rounded-corners.xml" "$pkgdir/usr/share/wayfire/metadata/rounded-corners.xml"
+  install -Dm644 "$B/vm/smooth-geometry/smooth-geometry.xml" "$pkgdir/usr/share/wayfire/metadata/smooth-geometry.xml"
+  DESTDIR="$pkgdir" ninja -C "$srcdir/pixdecor-build" install
+}

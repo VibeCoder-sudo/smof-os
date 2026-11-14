@@ -18,7 +18,7 @@ jobs:
       image: archlinux:latest
     steps:
       - name: tools
-        run: pacman -Syu --noconfirm base-devel git github-cli
+        run: pacman -Syu --noconfirm base-devel git github-cli wayfire glm meson ninja wayland-protocols pixman pkgconf
       - uses: actions/checkout@v4
       - name: build the package
         run: |
